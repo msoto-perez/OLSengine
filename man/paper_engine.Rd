@@ -4,7 +4,15 @@
 \alias{paper_engine}
 \title{Transparent and Assisted Linear Modeling Engine}
 \usage{
-paper_engine(formula, data, model = "ols", digits = 2)
+paper_engine(
+  formula,
+  data,
+  model = "ols",
+  robust = FALSE,
+  non_parametric = FALSE,
+  paired = FALSE,
+  digits = 2
+)
 }
 \arguments{
 \item{formula}{An object of class \code{formula} (e.g., \code{y ~ x1 + x2}).}
@@ -12,6 +20,12 @@ paper_engine(formula, data, model = "ols", digits = 2)
 \item{data}{A data frame containing the variables in the model.}
 
 \item{model}{A character string specifying the engine to use. Options are \code{"ols"}, \code{"anova"}, or \code{"logit"}. Default is \code{"ols"}.}
+
+\item{robust}{Logical or "auto". If TRUE, applies HC3 robust SE for OLS. Default is FALSE.}
+
+\item{non_parametric}{Logical or "auto". Integrates ANOVA/t-test non-parametric equivalents. Default is FALSE.}
+
+\item{paired}{Logical. Assumes paired/dependent data for ANOVA/t-tests. Default is FALSE.}
 
 \item{digits}{An integer specifying the number of decimal places for the output. Default is \code{2}.}
 }
