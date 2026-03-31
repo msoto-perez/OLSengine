@@ -1,0 +1,88 @@
+---
+title: "OLSengine: Assisted Simplicity Tutorial"
+author: "msoto-perez"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{OLSengine Tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+# 1. Introduction
+The philosophy of **Assisted Simplicity** aims to bridge the gap between complex computation and methodological rigor.
+
+## 2. Case Study: Heteroskedasticity
+In social sciences, variance often increases with the scale of the predictor. Let's see how `OLSengine` handles this.
+
+```{r, message=FALSE}
+library(OLSengine)
+
+# 1. Simulate data with non-constant variance
+set.seed(123)
+n <- 200
+x <- rnorm(n, 50, 10)
+y <- 10 + 0.5 * x + rnorm(n, 0, x * 0.2) # Heteroskedasticity
+df <- data.frame(y, x)
+
+# 2. Run the engine
+model <- paper_engine(y ~ x, data = df, model = "ols")
+```
+
+### Aduana Feedback
+The "Aduana" messages provide critical guidance:
+
+### Correcting the Model
+Following the advice, we apply robust standard errors:
+
+```{r}
+model_robust <- paper_engine(y ~ x, data = df, model = "ols", robust = TRUE)
+model_robust$tables$Table2_OLS_Estimation
+```
+
+## 3. Case Study 2: Experimental Logic (ANOVA/T-Test)
+In experimental research, we often compare groups. `OLSengine` automatically checks for normality and variance homogeneity to decide if a Parametric or Non-Parametric approach is needed.
+
+```{r}
+# Simulating 3 groups with non-normal distribution
+set.seed(789)
+group_data <- data.frame(
+  score = c(rgamma(30, 2, 0.5), rgamma(30, 5, 0.5), rgamma(30, 3, 0.5)),
+  group = rep(c("Control", "Treatment A", "Treatment B"), each = 30)
+)
+
+# Run ANOVA engine with "auto" non-parametric detection
+model_anova <- paper_engine(score ~ group, data = group_data, model = "anova", non_parametric = "auto")
+
+# View the result (it will automatically use Kruskal-Wallis if normality fails)
+model_anova$tables$Table1_ANOVA_Results
+```
+
+## 4. Case Study 3: Binary Outcomes (Logistic Regression)
+When the outcome is binary (e.g., Success/Failure), the engine calculates Odds Ratios and Classification Accuracy.
+
+```{r}
+# Simulating binary data
+set.seed(101)
+n_logit <- 100
+age <- rnorm(n_logit, 40, 10)
+passed <- rbinom(n_logit, 1, plogis(-5 + 0.12 * age))
+logit_df <- data.frame(passed, age)
+
+# Run Logit engine
+model_logit <- paper_engine(passed ~ age, data = logit_df, model = "logit")
+
+# View Odds Ratios and Accuracy
+model_logit$tables$Table3_Logit_Estimation
+```
+
+## 5. Visualizing for Publication
+Finally, `OLSengine` provides grayscale, publication-ready plots without the need for extra libraries.
+
+```{r}
+# Forest plot for our robust OLS model
+plot_engine(model_robust)
+```
+
+## Conclusion
+`OLSengine` simplifies the transition from raw data to paper-ready results, ensuring that every step is backed by a rigorous methodological audit.

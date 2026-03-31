@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="msoto-perez" />
+
+<meta name="date" content="2026-03-31" />
+
+<title>OLSengine: Assisted Simplicity Tutorial</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">OLSengine: Assisted Simplicity
+Tutorial</h1>
+<h4 class="author">msoto-perez</h4>
+<h4 class="date">2026-03-31</h4>
+
+
+
+<div id="introduction" class="section level1">
+<h1>1. Introduction</h1>
+<p>The philosophy of <strong>Assisted Simplicity</strong> aims to bridge
+the gap between complex computation and methodological rigor.</p>
+<div id="case-study-heteroskedasticity" class="section level2">
+<h2>2. Case Study: Heteroskedasticity</h2>
+<p>In social sciences, variance often increases with the scale of the
+predictor. Let’s see how <code>OLSengine</code> handles this.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(OLSengine)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a></span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="co"># 1. Simulate data with non-constant variance</span></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">123</span>)</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">200</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>x <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n, <span class="dv">50</span>, <span class="dv">10</span>)</span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="dv">10</span> <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> x <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, x <span class="sc">*</span> <span class="fl">0.2</span>) <span class="co"># Heteroskedasticity</span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(y, x)</span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a><span class="co"># 2. Run the engine</span></span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>model <span class="ot">&lt;-</span> <span class="fu">paper_engine</span>(y <span class="sc">~</span> x, <span class="at">data =</span> df, <span class="at">model =</span> <span class="st">&quot;ols&quot;</span>)</span></code></pre></div>
+<div id="aduana-feedback" class="section level3">
+<h3>Aduana Feedback</h3>
+<p>The “Aduana” messages provide critical guidance:</p>
+</div>
+<div id="correcting-the-model" class="section level3">
+<h3>Correcting the Model</h3>
+<p>Following the advice, we apply robust standard errors:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>model_robust <span class="ot">&lt;-</span> <span class="fu">paper_engine</span>(y <span class="sc">~</span> x, <span class="at">data =</span> df, <span class="at">model =</span> <span class="st">&quot;ols&quot;</span>, <span class="at">robust =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>model_robust<span class="sc">$</span>tables<span class="sc">$</span>Table2_OLS_Estimation</span></code></pre></div>
+<pre><code>##               Predictor    B   SE    t      p CI_95_Low CI_95_High   f2
+## (Intercept) (Intercept) 9.70 4.28 2.27   0.02      1.26      18.14   NA
+## x                     x 0.51 0.09 5.72 &lt; .001      0.34       0.69 0.23</code></pre>
+</div>
+</div>
+<div id="case-study-2-experimental-logic-anovat-test" class="section level2">
+<h2>3. Case Study 2: Experimental Logic (ANOVA/T-Test)</h2>
+<p>In experimental research, we often compare groups.
+<code>OLSengine</code> automatically checks for normality and variance
+homogeneity to decide if a Parametric or Non-Parametric approach is
+needed.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># Simulating 3 groups with non-normal distribution</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">789</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>group_data <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">score =</span> <span class="fu">c</span>(<span class="fu">rgamma</span>(<span class="dv">30</span>, <span class="dv">2</span>, <span class="fl">0.5</span>), <span class="fu">rgamma</span>(<span class="dv">30</span>, <span class="dv">5</span>, <span class="fl">0.5</span>), <span class="fu">rgamma</span>(<span class="dv">30</span>, <span class="dv">3</span>, <span class="fl">0.5</span>)),</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  <span class="at">group =</span> <span class="fu">rep</span>(<span class="fu">c</span>(<span class="st">&quot;Control&quot;</span>, <span class="st">&quot;Treatment A&quot;</span>, <span class="st">&quot;Treatment B&quot;</span>), <span class="at">each =</span> <span class="dv">30</span>)</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>)</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="co"># Run ANOVA engine with &quot;auto&quot; non-parametric detection</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>model_anova <span class="ot">&lt;-</span> <span class="fu">paper_engine</span>(score <span class="sc">~</span> group, <span class="at">data =</span> group_data, <span class="at">model =</span> <span class="st">&quot;anova&quot;</span>, <span class="at">non_parametric =</span> <span class="st">&quot;auto&quot;</span>)</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a><span class="co"># View the result (it will automatically use Kruskal-Wallis if normality fails)</span></span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>model_anova<span class="sc">$</span>tables<span class="sc">$</span>Table1_ANOVA_Results</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+</div>
+<div id="case-study-3-binary-outcomes-logistic-regression" class="section level2">
+<h2>4. Case Study 3: Binary Outcomes (Logistic Regression)</h2>
+<p>When the outcome is binary (e.g., Success/Failure), the engine
+calculates Odds Ratios and Classification Accuracy.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># Simulating binary data</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">101</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>n_logit <span class="ot">&lt;-</span> <span class="dv">100</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>age <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(n_logit, <span class="dv">40</span>, <span class="dv">10</span>)</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>passed <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(n_logit, <span class="dv">1</span>, <span class="fu">plogis</span>(<span class="sc">-</span><span class="dv">5</span> <span class="sc">+</span> <span class="fl">0.12</span> <span class="sc">*</span> age))</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>logit_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(passed, age)</span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co"># Run Logit engine</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>model_logit <span class="ot">&lt;-</span> <span class="fu">paper_engine</span>(passed <span class="sc">~</span> age, <span class="at">data =</span> logit_df, <span class="at">model =</span> <span class="st">&quot;logit&quot;</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co"># View Odds Ratios and Accuracy</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a>model_logit<span class="sc">$</span>tables<span class="sc">$</span>Table3_Logit_Estimation</span></code></pre></div>
+<pre><code>## NULL</code></pre>
+</div>
+<div id="visualizing-for-publication" class="section level2">
+<h2>5. Visualizing for Publication</h2>
+<p>Finally, <code>OLSengine</code> provides grayscale, publication-ready
+plots without the need for extra libraries.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># Forest plot for our robust OLS model</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="fu">plot_engine</span>(model_robust)</span></code></pre></div>
+<p><img role="img" src="data:image/png;base64,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" /><!-- --></p>
+</div>
+<div id="conclusion" class="section level2">
+<h2>Conclusion</h2>
+<p><code>OLSengine</code> simplifies the transition from raw data to
+paper-ready results, ensuring that every step is backed by a rigorous
+methodological audit.</p>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
