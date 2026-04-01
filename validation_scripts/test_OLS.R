@@ -2,11 +2,12 @@
 # VALIDATION TEST 1: OLS MODEL
 # ========================================================
 
-# Clear environment
+# Clear environment for pure reproducibility
 rm(list = ls())
 
-# CARGAR EL PAQUETE COMPLETO (Sustituye a source)
-devtools::load_all()
+# install directly from GitHub and load
+devtools::install_github("msoto-perez/OLSengine")
+library(OLSengine)
 
 # 1. Simulate data
 set.seed(123)

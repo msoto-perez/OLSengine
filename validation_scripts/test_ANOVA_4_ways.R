@@ -2,13 +2,12 @@
 # VALIDATION TEST: ANOVA IN FOUR WAYS (The Customs in Action)
 # ========================================================
 
-# Limpiar el entorno de trabajo
+# Clear environment for pure reproducibility
 rm(list = ls())
 
-# 1. PROCESO DE ACTUALIZACIÓN DEL PAQUETE
-cat(">> Actualizando documentación y cargando paquete...\n")
-devtools::document()
-devtools::load_all()
+# install directly from GitHub and load
+devtools::install_github("msoto-perez/OLSengine")
+library(OLSengine)
 
 # ========================================================
 # PREPARACIÓN DE DATOS SIMULADOS
