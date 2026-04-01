@@ -64,4 +64,10 @@ plot_engine(model_logit)
 ```
 
 ## 📖 Citation
-If you use **OLSengine** in your research, please consider citing it to support open-source academic software. (Citation details coming soon).
+To cite OLSengine in publications, please use:
+
+Soto-Pérez, M. (2026). 
+
+OLSengine: A transparent and assisted linear modelling engine in base R (v1.0.0). 
+
+Zenodo. https://doi.org/10.5281/zenodo.19375852

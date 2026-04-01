@@ -1,6 +1,6 @@
 Package: OLSengine
 Title: Transparent and Assisted Linear Modeling Engine
-Version: 0.1.0
+Version: 1.0.0
 Authors@R: 
     person("Manuel", "Soto-Pérez",, "msoto@up.edu.mx", role = c("aut", "cre"))
 Description: A transparent, modular, and base-R implemented statistical engine 
@@ -10,8 +10,11 @@ Description: A transparent, modular, and base-R implemented statistical engine
     audits mathematical assumptions (e.g., multicollinearity, heteroskedasticity, 
     normality, and perfect separation) and outputs publication-ready, APA-formatted 
     tables. It deliberately avoids hidden heuristics and external dependencies, 
-    ensuring computational transparency and reproducibility for applied research.
+    ensuring computational transparency and reproducibility for applied research. 
+    (DOI: 10.5281/zenodo.19375852).
 License: MIT + file LICENSE
+URL: https://github.com/msoto-perez/OLSEngine
+BugReports: https://github.com/msoto-perez/OLSEngine/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
