@@ -15,25 +15,64 @@ paper_engine(
 )
 }
 \arguments{
-\item{formula}{An object of class \code{formula} (e.g., \code{y ~ x1 + x2}).}
+\item{formula}{A \code{formula} object specifying the model (e.g., \code{y ~ x1 + x2}).}
 
-\item{data}{A data frame containing the variables in the model.}
+\item{data}{A data frame containing all variables referenced in \code{formula}.}
 
-\item{model}{A character string specifying the engine to use. Options are \code{"ols"}, \code{"anova"}, or \code{"logit"}. Default is \code{"ols"}.}
+\item{model}{A character string indicating the estimation engine.
+One of \code{"ols"} (default), \code{"anova"}, or \code{"logit"}.}
 
-\item{robust}{Logical or "auto". If TRUE, applies HC3 robust SE for OLS. Default is FALSE.}
+\item{robust}{Logical or \code{"auto"}. Controls heteroskedasticity-robust
+standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
+applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
+test detects heteroskedasticity (p < .05). Default is \code{FALSE}.}
 
-\item{non_parametric}{Logical or "auto". Integrates ANOVA/t-test non-parametric equivalents. Default is FALSE.}
+\item{non_parametric}{Logical or \code{"auto"}. Controls non-parametric
+fallback for ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis or
+Wilcoxon tests are used. If \code{"auto"}, transition occurs when
+Shapiro-Wilk detects non-normality (p < .05). Default is \code{FALSE}.}
 
-\item{paired}{Logical. Assumes paired/dependent data for ANOVA/t-tests. Default is FALSE.}
+\item{paired}{Logical. If \code{TRUE}, assumes paired/dependent samples
+for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.}
 
-\item{digits}{An integer specifying the number of decimal places for the output. Default is \code{2}.}
+\item{digits}{Integer. Number of decimal places in output tables.
+Default is \code{2}.}
 }
 \value{
-A list of class \code{basic_model} containing formatted tables, raw diagnostics, and methodological guidance messages.
+An object of class \code{basic_model}, which is a list containing:
+\describe{
+\item{tables}{A list of formatted data frames with estimation results.}
+\item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
+\item{messages}{A character vector of methodological guidance messages from the customs layer.}
+\item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, or \code{"logit"}).}
+\item{data}{The cleaned data frame used for estimation (after listwise deletion).}
+}
 }
 \description{
-A wrapper function that routes data to specific mathematical engines
-(OLS, ANOVA, Logit), performs automatic methodological diagnostics (the "Customs"),
-and returns publication-ready formatted tables.
+Estimates OLS regression, ANOVA/t-tests, or binary logistic
+regression models using pure base R matrix algebra. Automatically audits
+statistical assumptions through an integrated methodological customs layer
+and returns publication-ready APA-formatted tables. Designed for applied
+researchers and early-career academics who need a single, transparent
+workflow from estimation to reporting.
+}
+\examples{
+# OLS example
+set.seed(42)
+df <- data.frame(y = rnorm(100), x1 = rnorm(100), x2 = rnorm(100))
+result <- paper_engine(y ~ x1 + x2, data = df, model = "ols")
+print(result$tables)
+print(result$messages)
+
+# ANOVA example
+df2 <- data.frame(score = c(rnorm(30, 5), rnorm(30, 7)),
+                  group = rep(c("A", "B"), each = 30))
+result2 <- paper_engine(score ~ group, data = df2, model = "anova")
+print(result2$tables)
+
+# Logit example
+df3 <- data.frame(y = rbinom(100, 1, 0.5), x = rnorm(100))
+result3 <- paper_engine(y ~ x, data = df3, model = "logit")
+print(result3$tables)
+
 }

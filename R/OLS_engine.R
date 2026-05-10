@@ -3,9 +3,14 @@
 # Stage 3: Functional Prototype (English Version)
 #################################################
 
+#' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test ks.test lm median model.matrix na.omit pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test wilcox.test
+#' @importFrom graphics abline arrows axis box lines par points text
+NULL
+
 # =========================================================
 # 1. PRE-ESTIMATION FILTER (Data Integrity Customs)
 # =========================================================
+# Internal function: Data integrity filter (not exported)
 pre_estimation_filter <- function(formula, data) {
 
   # Extract only the variables used in the formula
@@ -50,6 +55,7 @@ pre_estimation_filter <- function(formula, data) {
 # =========================================================
 # 2. OLS ENGINE (Mathematical Core & Robust SE)
 # =========================================================
+# Internal function: Data integrity filter (not exported)
 ols_engine <- function(formula, data, robust = FALSE) {
 
   # 1. Base OLS Estimation
@@ -156,6 +162,7 @@ ols_engine <- function(formula, data, robust = FALSE) {
 # =========================================================
 # 3. ANOVA / T-TEST ENGINE (Mathematical Core & 4 Variants)
 # =========================================================
+# Internal function: Data integrity filter (not exported)
 anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) {
 
   y_name <- all.vars(formula)[1]
@@ -281,6 +288,7 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
 # =========================================================
 # 4. LOGIT ENGINE (Mathematical Core for Binary Outcomes)
 # =========================================================
+# Internal function: Data integrity filter (not exported)
 logit_engine <- function(formula, data) {
 
   fit <- glm(formula, data = data, family = binomial(link = "logit"))
@@ -344,19 +352,58 @@ logit_engine <- function(formula, data) {
 
 #' Transparent and Assisted Linear Modeling Engine
 #'
-#' @description A wrapper function that routes data to specific mathematical engines
-#' (OLS, ANOVA, Logit), performs automatic methodological diagnostics (the "Customs"),
-#' and returns publication-ready formatted tables.
+#' @description Estimates OLS regression, ANOVA/t-tests, or binary logistic
+#'   regression models using pure base R matrix algebra. Automatically audits
+#'   statistical assumptions through an integrated methodological customs layer
+#'   and returns publication-ready APA-formatted tables. Designed for applied
+#'   researchers and early-career academics who need a single, transparent
+#'   workflow from estimation to reporting.
 #'
-#' @param formula An object of class \code{formula} (e.g., \code{y ~ x1 + x2}).
-#' @param data A data frame containing the variables in the model.
-#' @param model A character string specifying the engine to use. Options are \code{"ols"}, \code{"anova"}, or \code{"logit"}. Default is \code{"ols"}.
-#' @param robust Logical or "auto". If TRUE, applies HC3 robust SE for OLS. Default is FALSE.
-#' @param non_parametric Logical or "auto". Integrates ANOVA/t-test non-parametric equivalents. Default is FALSE.
-#' @param paired Logical. Assumes paired/dependent data for ANOVA/t-tests. Default is FALSE.
-#' @param digits An integer specifying the number of decimal places for the output. Default is \code{2}.
+#' @param formula A \code{formula} object specifying the model (e.g., \code{y ~ x1 + x2}).
+#' @param data A data frame containing all variables referenced in \code{formula}.
+#' @param model A character string indicating the estimation engine.
+#'   One of \code{"ols"} (default), \code{"anova"}, or \code{"logit"}.
+#' @param robust Logical or \code{"auto"}. Controls heteroskedasticity-robust
+#'   standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
+#'   applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
+#'   test detects heteroskedasticity (p < .05). Default is \code{FALSE}.
+#' @param non_parametric Logical or \code{"auto"}. Controls non-parametric
+#'   fallback for ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis or
+#'   Wilcoxon tests are used. If \code{"auto"}, transition occurs when
+#'   Shapiro-Wilk detects non-normality (p < .05). Default is \code{FALSE}.
+#' @param paired Logical. If \code{TRUE}, assumes paired/dependent samples
+#'   for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.
+#' @param digits Integer. Number of decimal places in output tables.
+#'   Default is \code{2}.
 #'
-#' @return A list of class \code{basic_model} containing formatted tables, raw diagnostics, and methodological guidance messages.
+#' @return An object of class \code{basic_model}, which is a list containing:
+#'   \describe{
+#'     \item{tables}{A list of formatted data frames with estimation results.}
+#'     \item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
+#'     \item{messages}{A character vector of methodological guidance messages from the customs layer.}
+#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, or \code{"logit"}).}
+#'     \item{data}{The cleaned data frame used for estimation (after listwise deletion).}
+#'   }
+#'
+#' @examples
+#' # OLS example
+#' set.seed(42)
+#' df <- data.frame(y = rnorm(100), x1 = rnorm(100), x2 = rnorm(100))
+#' result <- paper_engine(y ~ x1 + x2, data = df, model = "ols")
+#' print(result$tables)
+#' print(result$messages)
+#'
+#' # ANOVA example
+#' df2 <- data.frame(score = c(rnorm(30, 5), rnorm(30, 7)),
+#'                   group = rep(c("A", "B"), each = 30))
+#' result2 <- paper_engine(score ~ group, data = df2, model = "anova")
+#' print(result2$tables)
+#'
+#' # Logit example
+#' df3 <- data.frame(y = rbinom(100, 1, 0.5), x = rnorm(100))
+#' result3 <- paper_engine(y ~ x, data = df3, model = "logit")
+#' print(result3$tables)
+#'
 #' @export
 paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_parametric = FALSE, paired = FALSE, digits = 2) {
 
@@ -501,16 +548,28 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
 
 #' Generate Publication-Ready Plots for Basic Models
 #'
-#' @description Automatically generates minimalist, APA-style plots based on the estimated model.
-#' OLS: Forest plot of coefficients with 95% CI.
-#' ANOVA: Means plot with 95% CI error bars.
-#' Logit: Logistic probability curve for the main predictor.
+#' @description Produces minimalist APA-style plots from a \code{basic_model}
+#'   object returned by \code{\link{paper_engine}}. The plot type is selected
+#'   automatically based on the estimation method: a forest plot of coefficients
+#'   with 95% CI for OLS, a group means plot with 95% CI error bars for ANOVA,
+#'   and a logistic probability curve for logistic regression.
 #'
-#' @param model_object An object of class \code{basic_model} generated by \code{paper_engine}.
-#' @param y_label A character string for the Y-axis label.
-#' @param x_label A character string for the X-axis label.
+#' @param model_object An object of class \code{basic_model} generated by
+#'   \code{\link{paper_engine}}.
+#' @param y_label A character string for the Y-axis label. If \code{NULL}
+#'   (default), a label is generated automatically from the model type.
+#' @param x_label A character string for the X-axis label. If \code{NULL}
+#'   (default), a label is generated automatically from the model type.
 #'
-#' @return A base R plot rendered in the active graphics device.
+#' @return A base R plot rendered in the active graphics device. The function
+#'   is called for its side effect (the plot) and returns \code{NULL} invisibly.
+#'
+#' @examples
+#' set.seed(42)
+#' df <- data.frame(y = rnorm(100), x1 = rnorm(100), x2 = rnorm(100))
+#' result <- paper_engine(y ~ x1 + x2, data = df, model = "ols")
+#' plot_engine(result, y_label = "Outcome", x_label = "Predictors")
+#'
 #' @export
 plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
 
