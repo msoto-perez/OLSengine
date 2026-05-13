@@ -1532,4 +1532,95 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
          labels = sprintf("%.2f", plot_data$B),
          pos = 3, offset = 0.8, cex = 0.9, col = "black", font = 2)
   }
+
+  # =======================================================
+  # 6. DIFFERENCE-IN-DIFFERENCES PLOT: Parallel Trends
+  # =======================================================
+  else if (method == "did") {
+    # Get group means data
+    group_means <- model_object$tables$Group_Means
+
+    # Separate control and treated
+    control_data <- group_means[group_means$Group == "Control", ]
+    treated_data <- group_means[group_means$Group == "Treated", ]
+
+    # X-axis positions (Pre = 1, Post = 2)
+    x_pos <- c(1, 2)
+
+    # Y-axis range with margin
+    y_range <- range(group_means$Mean)
+    y_margin <- diff(y_range) * 0.15
+    y_min <- y_range[1] - y_margin
+    y_max <- y_range[2] + y_margin
+
+    # Labels
+    ylab_text <- ifelse(is.null(y_label), "Outcome Mean", y_label)
+    xlab_text <- ifelse(is.null(x_label), "Time Period", x_label)
+
+    # Create plot
+    plot(x_pos, control_data$Mean, type = "n",
+         xlim = c(0.8, 2.2), ylim = c(y_min, y_max),
+         axes = FALSE, xlab = xlab_text, ylab = ylab_text,
+         main = "Difference-in-Differences: Treatment Effect")
+
+    # Axes
+    axis(1, at = x_pos, labels = c("Pre", "Post"), tick = TRUE)
+    axis(2, las = 1)
+    box(bty = "l")
+
+    # Control group line (solid gray)
+    lines(x_pos, control_data$Mean, lwd = 2, col = "gray50", lty = 1)
+    points(x_pos, control_data$Mean, pch = 21, cex = 2, bg = "gray70", col = "black")
+
+    # Treated group line (solid black)
+    lines(x_pos, treated_data$Mean, lwd = 2, col = "black", lty = 1)
+    points(x_pos, treated_data$Mean, pch = 21, cex = 2, bg = "white", col = "black")
+
+    # Add counterfactual line (dashed) - what treated would have been without treatment
+    # Parallel trend assumption: treated would have increased by same amount as control
+    control_change <- control_data$Mean[2] - control_data$Mean[1]
+    counterfactual_post <- treated_data$Mean[1] + control_change
+
+    lines(x_pos, c(treated_data$Mean[1], counterfactual_post),
+          lwd = 2, col = "black", lty = 2)
+
+    # Add vertical arrow showing the treatment effect
+    if (treated_data$Mean[2] > counterfactual_post) {
+      arrows(x0 = 2.05, y0 = counterfactual_post,
+             x1 = 2.05, y1 = treated_data$Mean[2],
+             code = 3, angle = 90, length = 0.08, lwd = 2, col = "darkgreen")
+
+      # Label the effect
+      mid_point <- (counterfactual_post + treated_data$Mean[2]) / 2
+      text(x = 2.15, y = mid_point,
+           labels = "DiD\nEffect",
+           pos = 4, cex = 0.9, col = "darkgreen", font = 2)
+    }
+
+    # Add legend
+    legend("topleft",
+           legend = c("Control Group", "Treated Group", "Counterfactual (no treatment)"),
+           lty = c(1, 1, 2),
+           lwd = c(2, 2, 2),
+           col = c("gray50", "black", "black"),
+           pch = c(21, 21, NA),
+           pt.bg = c("gray70", "white", NA),
+           pt.cex = 1.5,
+           bty = "n",
+           cex = 0.9)
+
+    # Add numerical values
+    text(x = x_pos[1] - 0.08, y = control_data$Mean[1],
+         labels = sprintf("%.1f", control_data$Mean[1]),
+         pos = 2, cex = 0.8, col = "gray30")
+    text(x = x_pos[2] + 0.08, y = control_data$Mean[2],
+         labels = sprintf("%.1f", control_data$Mean[2]),
+         pos = 4, cex = 0.8, col = "gray30")
+    text(x = x_pos[1] - 0.08, y = treated_data$Mean[1],
+         labels = sprintf("%.1f", treated_data$Mean[1]),
+         pos = 2, cex = 0.8, col = "black")
+    text(x = x_pos[2] + 0.08, y = treated_data$Mean[2],
+         labels = sprintf("%.1f", treated_data$Mean[2]),
+         pos = 4, cex = 0.8, col = "black")
+  }
 }
