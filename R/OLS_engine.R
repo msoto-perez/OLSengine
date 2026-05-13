@@ -11,10 +11,15 @@ NULL
 # 1. PRE-ESTIMATION FILTER (Data Integrity Customs)
 # =========================================================
 # Internal function: Data integrity filter (not exported)
-pre_estimation_filter <- function(formula, data) {
+pre_estimation_filter <- function(formula, data, extra_vars = NULL) {
 
   # Extract only the variables used in the formula
   vars_in_model <- all.vars(formula)
+
+  # Add extra variables (for panel data: entity_id and time_id)
+  if (!is.null(extra_vars)) {
+    vars_in_model <- unique(c(vars_in_model, extra_vars))
+  }
 
   # Validate that variables exist in the dataset
   missing_vars <- setdiff(vars_in_model, names(data))
@@ -301,7 +306,15 @@ logit_engine <- function(formula, data) {
 
   null_dev <- fit$null.deviance
   res_dev <- fit$deviance
-  pseudo_r2 <- 1 - (res_dev / null_dev)
+  n <- nrow(data)
+
+  # McFadden Pseudo R² (original metric)
+  pseudo_r2_mcfadden <- 1 - (res_dev / null_dev)
+
+  # Nagelkerke Pseudo R² (normalized to [0,1] range for better interpretability)
+  r2_cox_snell <- 1 - exp((res_dev - null_dev) / n)
+  r2_max <- 1 - exp(-null_dev / n)
+  pseudo_r2_nagelkerke <- r2_cox_snell / r2_max
 
   aduana_msgs <- character(0)
 
@@ -334,35 +347,252 @@ logit_engine <- function(formula, data) {
     se = se,
     z_stats = z_stats,
     odds_ratios = odds_ratios,
-    pseudo_r2 = pseudo_r2,
+    pseudo_r2_mcfadden = pseudo_r2_mcfadden,
+    pseudo_r2_nagelkerke = pseudo_r2_nagelkerke,
     diagnostics = list(
       perfect_separation = perfect_separation,
       hl_stat = hl_stat,
       hl_p_value = hl_p_value,
       accuracy = accuracy,
-      n = nrow(data)
+      n = n
     ),
     aduana_msgs = aduana_msgs
   )
 }
 
 # =========================================================
-# 5. WRAPPER FUNCTION (Paper Engine & Customs router)
+# 5. PANEL DATA ENGINE (Fixed & Random Effects + Hausman)
+# =========================================================
+
+# Internal function: Panel data estimation (not exported)
+panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
+
+  # Extract variables from formula
+  vars_in_model <- all.vars(formula)
+  y_name <- vars_in_model[1]
+  x_names <- vars_in_model[-1]
+
+  # Validate panel structure
+  if (!entity_id %in% names(data)) stop("entity_id variable not found in data")
+  if (!time_id %in% names(data)) stop("time_id variable not found in data")
+
+  # Create panel structure
+  data <- data[order(data[[entity_id]], data[[time_id]]), ]
+  entities <- data[[entity_id]]
+  time_periods <- data[[time_id]]
+  y <- data[[y_name]]
+  X <- as.matrix(data[, x_names, drop = FALSE])
+
+  n_obs <- nrow(data)
+  n_entities <- length(unique(entities))
+  n_time <- length(unique(time_periods))
+  k <- ncol(X)
+
+  aduana_msgs <- character(0)
+
+  # Check for balanced panel
+  entity_counts <- table(entities)
+  is_balanced <- all(entity_counts == n_time)
+  if (!is_balanced) {
+    aduana_msgs <- c(aduana_msgs, sprintf("INFO: Unbalanced panel detected. Entity observations range from %d to %d time periods.", min(entity_counts), max(entity_counts)))
+  }
+
+  # ============================================
+  # A. FIXED EFFECTS (Within Estimator)
+  # ============================================
+  # Demean by entity (within transformation)
+  y_entity_means <- tapply(y, entities, mean, na.rm = TRUE)[as.character(entities)]
+
+  # Handle X demeaning carefully for single or multiple predictors
+  if (k == 1) {
+    X_entity_means <- tapply(X[,1], entities, mean, na.rm = TRUE)[as.character(entities)]
+    X_entity_means <- matrix(X_entity_means, ncol = 1)
+  } else {
+    X_entity_means <- apply(X, 2, function(col) tapply(col, entities, mean, na.rm = TRUE)[as.character(entities)])
+  }
+
+  y_demeaned <- y - y_entity_means
+  X_demeaned <- X - X_entity_means
+
+  # OLS on demeaned data (within estimator)
+  XX_inv <- solve(crossprod(X_demeaned))
+  beta_fe <- as.vector(XX_inv %*% crossprod(X_demeaned, y_demeaned))
+  names(beta_fe) <- x_names
+
+  # Residuals and variance
+  resid_fe <- y_demeaned - as.vector(X_demeaned %*% beta_fe)
+  sigma2_fe <- sum(resid_fe^2) / (n_obs - n_entities - k)
+  vcov_fe <- sigma2_fe * XX_inv
+  se_fe <- sqrt(diag(vcov_fe))
+
+  # R² within
+  tss_within <- sum((y_demeaned - mean(y_demeaned))^2)
+  rss_within <- sum(resid_fe^2)
+  r2_within <- max(0, 1 - (rss_within / tss_within))
+
+  # ============================================
+  # B. RANDOM EFFECTS (GLS Estimator)
+  # ============================================
+  # Between estimator (entity-level means)
+  entity_data <- aggregate(cbind(y, X), by = list(entities), FUN = mean, na.rm = TRUE)
+  y_between <- entity_data[, 2]
+  X_between <- as.matrix(entity_data[, -c(1, 2), drop = FALSE])
+
+  XX_between_inv <- solve(crossprod(X_between))
+  beta_between <- as.vector(XX_between_inv %*% crossprod(X_between, y_between))
+  resid_between <- y_between - as.vector(X_between %*% beta_between)
+  sigma2_between <- sum(resid_between^2) / (n_entities - k - 1)
+
+  # Theta for GLS transformation (Swamy-Arora)
+  sigma2_within <- sigma2_fe
+  if (is_balanced) {
+    theta <- 1 - sqrt(sigma2_within / (sigma2_within + n_time * sigma2_between))
+  } else {
+    # Average T for unbalanced panels
+    theta <- 1 - sqrt(sigma2_within / (sigma2_within + mean(entity_counts) * sigma2_between))
+  }
+
+  # Quasi-demeaned data for RE
+  y_quasi <- y - theta * y_entity_means
+  X_quasi <- X - theta * X_entity_means
+
+  # Add intercept for RE
+  X_quasi_int <- cbind(1, X_quasi)
+  XX_re_inv <- solve(crossprod(X_quasi_int))
+  beta_re_full <- as.vector(XX_re_inv %*% crossprod(X_quasi_int, y_quasi))
+  beta_re <- beta_re_full[-1]  # Remove intercept
+  intercept_re <- beta_re_full[1]
+  names(beta_re) <- x_names
+
+  # RE standard errors
+  resid_re <- y_quasi - as.vector(X_quasi_int %*% beta_re_full)
+  sigma2_re <- sum(resid_re^2) / (n_obs - k - 1)
+  vcov_re <- sigma2_re * XX_re_inv
+  se_re_full <- sqrt(diag(vcov_re))
+  se_re <- se_re_full[-1]
+
+  # R² overall (for RE)
+  y_grand_mean <- mean(y)
+  tss_overall <- sum((y - y_grand_mean)^2)
+  y_fitted_re <- intercept_re + as.vector(X %*% beta_re)
+  rss_overall <- sum((y - y_fitted_re)^2)
+  r2_overall <- max(0, 1 - (rss_overall / tss_overall))
+
+  # ============================================
+  # C. HAUSMAN TEST
+  # ============================================
+  # H0: RE is consistent and efficient (use RE)
+  # H1: Only FE is consistent (use FE)
+  beta_diff <- beta_fe - beta_re
+  vcov_diff <- vcov_fe - vcov_re[-1, -1, drop = FALSE]
+
+  # Check if vcov_diff is positive definite
+  eigenvalues <- eigen(vcov_diff, only.values = TRUE)$values
+  if (any(eigenvalues < -1e-10)) {
+    hausman_stat <- NA
+    hausman_p <- NA
+    hausman_warning <- "WARNING: Hausman test covariance matrix is not positive definite. This can occur with highly collinear predictors or small between-entity variation. Test is inconclusive."
+    aduana_msgs <- c(aduana_msgs, hausman_warning)
+  } else {
+    # Force symmetry and positive definiteness
+    vcov_diff <- (vcov_diff + t(vcov_diff)) / 2
+    vcov_diff <- vcov_diff + diag(1e-10, nrow(vcov_diff))
+
+    tryCatch({
+      hausman_stat <- as.numeric(t(beta_diff) %*% solve(vcov_diff) %*% beta_diff)
+      hausman_p <- pchisq(hausman_stat, df = k, lower.tail = FALSE)
+    }, error = function(e) {
+      hausman_stat <<- NA
+      hausman_p <<- NA
+      aduana_msgs <<- c(aduana_msgs, "WARNING: Hausman test computation failed numerically. Consider using Fixed Effects as conservative default.")
+    })
+  }
+
+  # ============================================
+  # D. AUTO MODEL SELECTION
+  # ============================================
+  use_fe <- FALSE
+  if (identical(method, "auto")) {
+    if (!is.na(hausman_p) && hausman_p < 0.05) {
+      use_fe <- TRUE
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Hausman test rejects random effects (p = %.3f). Fixed Effects estimator selected to control for entity-specific unobserved heterogeneity (Wooldridge, 2010).", hausman_p))
+    } else if (!is.na(hausman_p)) {
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Hausman test supports random effects (p = %.3f). Random Effects estimator selected for efficiency gains (Wooldridge, 2010).", hausman_p))
+    } else {
+      use_fe <- TRUE
+      aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Hausman test inconclusive. Fixed Effects selected as conservative default.")
+    }
+  } else if (method == "fe") {
+    use_fe <- TRUE
+    aduana_msgs <- c(aduana_msgs, "Customs: Fixed Effects applied per explicit user request.")
+  } else if (method == "re") {
+    aduana_msgs <- c(aduana_msgs, "Customs: Random Effects applied per explicit user request.")
+  }
+
+  # Return selected model
+  if (use_fe) {
+    return(list(
+      coefficients = beta_fe,
+      se = se_fe,
+      method = "Fixed Effects",
+      r2 = r2_within,
+      sigma2 = sigma2_fe,
+      n_obs = n_obs,
+      n_entities = n_entities,
+      n_time = n_time,
+      df_residual = n_obs - n_entities - k,
+      hausman_stat = hausman_stat,
+      hausman_p = hausman_p,
+      diagnostics = list(
+        r2 = r2_within,
+        n = n_obs,
+        n_entities = n_entities,
+        n_time = n_time
+      ),
+      aduana_msgs = aduana_msgs
+    ))
+  } else {
+    return(list(
+      coefficients = beta_re,
+      se = se_re,
+      intercept = intercept_re,
+      method = "Random Effects",
+      r2 = r2_overall,
+      sigma2 = sigma2_re,
+      n_obs = n_obs,
+      n_entities = n_entities,
+      n_time = n_time,
+      df_residual = n_obs - k - 1,
+      hausman_stat = hausman_stat,
+      hausman_p = hausman_p,
+      diagnostics = list(
+        r2 = r2_overall,
+        n = n_obs,
+        n_entities = n_entities,
+        n_time = n_time
+      ),
+      aduana_msgs = aduana_msgs
+    ))
+  }
+}
+
+# =========================================================
+# 6. WRAPPER FUNCTION (Paper Engine & Customs router)
 # =========================================================
 
 #' Transparent and Assisted Linear Modeling Engine
 #'
-#' @description Estimates OLS regression, ANOVA/t-tests, or binary logistic
-#'   regression models using pure base R matrix algebra. Automatically audits
-#'   statistical assumptions through an integrated methodological customs layer
-#'   and returns publication-ready APA-formatted tables. Designed for applied
-#'   researchers and early-career academics who need a single, transparent
-#'   workflow from estimation to reporting.
+#' @description Estimates OLS regression, ANOVA/t-tests, binary logistic
+#'   regression, or panel data models using pure base R matrix algebra.
+#'   Automatically audits statistical assumptions through an integrated
+#'   methodological customs layer and returns publication-ready APA-formatted
+#'   tables. Designed for applied researchers and early-career academics who
+#'   need a single, transparent workflow from estimation to reporting.
 #'
 #' @param formula A \code{formula} object specifying the model (e.g., \code{y ~ x1 + x2}).
 #' @param data A data frame containing all variables referenced in \code{formula}.
 #' @param model A character string indicating the estimation engine.
-#'   One of \code{"ols"} (default), \code{"anova"}, or \code{"logit"}.
+#'   One of \code{"ols"} (default), \code{"anova"}, \code{"logit"}, or \code{"panel"}.
 #' @param robust Logical or \code{"auto"}. Controls heteroskedasticity-robust
 #'   standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
 #'   applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
@@ -373,6 +603,13 @@ logit_engine <- function(formula, data) {
 #'   Shapiro-Wilk detects non-normality (p < .05). Default is \code{FALSE}.
 #' @param paired Logical. If \code{TRUE}, assumes paired/dependent samples
 #'   for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.
+#' @param entity_id Character string. Name of the entity/individual identifier
+#'   variable for panel data models. Required when \code{model = "panel"}.
+#' @param time_id Character string. Name of the time period identifier variable
+#'   for panel data models. Required when \code{model = "panel"}.
+#' @param method Character string for panel data. One of \code{"auto"} (default,
+#'   uses Hausman test to select between FE and RE), \code{"fe"} (Fixed Effects),
+#'   or \code{"re"} (Random Effects). Only used when \code{model = "panel"}.
 #' @param digits Integer. Number of decimal places in output tables.
 #'   Default is \code{2}.
 #'
@@ -381,7 +618,7 @@ logit_engine <- function(formula, data) {
 #'     \item{tables}{A list of formatted data frames with estimation results.}
 #'     \item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
 #'     \item{messages}{A character vector of methodological guidance messages from the customs layer.}
-#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, or \code{"logit"}).}
+#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, \code{"logit"}, or \code{"panel"}).}
 #'     \item{data}{The cleaned data frame used for estimation (after listwise deletion).}
 #'   }
 #'
@@ -405,11 +642,24 @@ logit_engine <- function(formula, data) {
 #' print(result3$tables)
 #'
 #' @export
-paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_parametric = FALSE, paired = FALSE, digits = 2) {
+paper_engine <- function(formula, data, model = "ols", robust = FALSE,
+                         non_parametric = FALSE, paired = FALSE,
+                         entity_id = NULL, time_id = NULL, method = "auto",
+                         digits = 2) {
 
-  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit"))
+  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit", "panel"))
 
-  filter_res <- pre_estimation_filter(formula, data)
+  # Validate panel data parameters
+  if (model == "panel") {
+    if (is.null(entity_id) || is.null(time_id)) {
+      stop("Panel data models require both 'entity_id' and 'time_id' parameters.")
+    }
+  }
+
+  # Pass extra variables for panel data
+  extra_vars <- if (model == "panel") c(entity_id, time_id) else NULL
+  filter_res <- pre_estimation_filter(formula, data, extra_vars = extra_vars)
+
   clean_data <- filter_res$clean_data
   aduana_messages <- filter_res$messages
 
@@ -434,13 +684,26 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
       p = p_formatted,
       CI_95_Low = round(coefs - t_crit * se, digits),
       CI_95_High = round(coefs + t_crit * se, digits),
-      f2 = round(c(NA, raw$f2), digits) # NAs for the intercept
+      f2 = round(c(NA, raw$f2), digits)
     )
     table_name <- "Table2_OLS_Estimation"
 
-    if (max(raw$vif) > 5) {
-      aduana_messages <- c(aduana_messages, sprintf("WARNING (Multicollinearity): Max VIF is %.2f (> 5.0). Consider mean-centering (Hayes, 2022).", max(raw$vif)))
+    # Methodological Customs: VIF Interpretation with pedagogical nuance
+    max_vif <- max(raw$vif, na.rm = TRUE)
+    if (max_vif > 5) {
+      vif_warning <- sprintf(
+        "WARNING (Multicollinearity): Maximum VIF = %.2f exceeds conventional threshold of 5 (O'Brien, 2007). High collinearity inflates standard errors and may obscure true predictor effects. Note: VIF thresholds are disciplinary conventions, not absolute cutoffs—interpret in context of your research design.",
+        max_vif
+      )
+      aduana_messages <- c(aduana_messages, vif_warning)
+    } else if (max_vif > 2.5) {
+      vif_info <- sprintf(
+        "INFO (Multicollinearity): Maximum VIF = %.2f. Moderate collinearity detected but below critical threshold. Standard errors may be slightly inflated (O'Brien, 2007).",
+        max_vif
+      )
+      aduana_messages <- c(aduana_messages, vif_info)
     }
+
     if (raw$diagnostics$norm_p_value < 0.05) {
       aduana_messages <- c(aduana_messages, sprintf("WARNING (Normality): p < .05 in %s. With N=%d, OLS may be robust due to CLT (Lumley et al., 2002).", raw$diagnostics$norm_method, raw$diagnostics$N))
     }
@@ -448,7 +711,6 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
 
   # --- ANOVA BRANCH ---
   else if (model == "anova") {
-    # Pass the main function parameters to the engine
     raw <- anova_engine(formula, clean_data, non_parametric = non_parametric, paired = paired)
     aduana_messages <- c(aduana_messages, raw$aduana_msgs)
 
@@ -484,11 +746,9 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
     z_stats <- raw$z_stats
     or <- raw$odds_ratios
 
-    # Gretl-style p-values using the Z-distribution (Wald test)
     p_vals <- 2 * pnorm(abs(z_stats), lower.tail = FALSE)
     p_formatted <- ifelse(p_vals < 0.001, "< .001", sprintf(paste0("%.", digits, "f"), p_vals))
 
-    # Confidence Intervals for Odds Ratios
     z_crit <- qnorm(0.975)
     ci_low <- exp(coefs - z_crit * se)
     ci_high <- exp(coefs + z_crit * se)
@@ -505,7 +765,6 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
     )
     table_name <- "Table2_Logit_Estimation"
 
-    # Logit Customs
     if (raw$diagnostics$perfect_separation) {
       w_sep <- "CRITICAL WARNING (Perfect Separation): Astronomically high standard errors detected. The model perfectly predicts the outcome. Odds Ratios are invalid."
       aduana_messages <- c(aduana_messages, w_sep)
@@ -518,7 +777,41 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
     }
 
     aduana_messages <- c(aduana_messages, sprintf("INFO: Classification Accuracy (Threshold 0.5) = %.1f%%", raw$diagnostics$accuracy * 100))
-    aduana_messages <- c(aduana_messages, sprintf("INFO: McFadden's Pseudo R-Squared = %.3f", raw$pseudo_r2))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: McFadden Pseudo R² = %.3f | Nagelkerke Pseudo R² = %.3f", raw$pseudo_r2_mcfadden, raw$pseudo_r2_nagelkerke))
+  }
+
+  # --- PANEL DATA BRANCH ---
+  else if (model == "panel") {
+    raw <- panel_engine(formula, clean_data, entity_id = entity_id, time_id = time_id, method = method)
+    aduana_messages <- c(aduana_messages, raw$aduana_msgs)
+
+    coefs <- raw$coefficients
+    se <- raw$se
+    t_stats <- coefs / se
+    p_vals <- 2 * pt(abs(t_stats), df = raw$df_residual, lower.tail = FALSE)
+    p_formatted <- ifelse(p_vals < 0.001, "< .001", sprintf(paste0("%.", digits, "f"), p_vals))
+
+    t_crit <- qt(0.975, df = raw$df_residual)
+
+    out_table <- data.frame(
+      Predictor = names(coefs),
+      B = round(coefs, digits),
+      SE = round(se, digits),
+      t = round(t_stats, digits),
+      p = p_formatted,
+      CI_95_Low = round(coefs - t_crit * se, digits),
+      CI_95_High = round(coefs + t_crit * se, digits)
+    )
+
+    table_name <- paste0("Table2_Panel_", gsub(" ", "_", raw$method))
+
+    # Panel-specific diagnostics
+    aduana_messages <- c(aduana_messages, sprintf("INFO: Panel structure - N entities = %d, T periods = %d, Total obs = %d", raw$n_entities, raw$n_time, raw$n_obs))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: R² (%s) = %.3f", ifelse(raw$method == "Fixed Effects", "within", "overall"), raw$r2))
+
+    if (!is.na(raw$hausman_p)) {
+      aduana_messages <- c(aduana_messages, sprintf("INFO: Hausman test statistic = %.2f (p = %.3f)", raw$hausman_stat, raw$hausman_p))
+    }
   }
 
   # --- WRAP-UP ---
@@ -543,7 +836,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE, non_param
 }
 
 # =========================================================
-# 6. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
+# 7. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
 # =========================================================
 
 #' Generate Publication-Ready Plots for Basic Models
