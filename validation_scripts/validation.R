@@ -73,3 +73,49 @@ comparison_table$Absolute_Difference <- sprintf("%.4f", comparison_table$Absolut
 
 print(comparison_table)
 
+# --- PANEL DATA ---
+# Install plm for comparison
+if (!requireNamespace("plm", quietly = TRUE)) {
+  install.packages("plm")
+}
+library(plm)
+
+# Create panel data
+panel_df <- data.frame(
+  id = rep(1:50, each = 3),
+  time = rep(1:3, times = 50),
+  y = rnorm(150) + rep(rnorm(50), each = 3),  # entity fixed effects
+  x1 = rnorm(150),
+  x2 = rnorm(150)
+)
+
+panel_pdata <- pdata.frame(panel_df, index = c("id", "time"))
+base_plm <- plm(y ~ x1 + x2, data = panel_pdata, model = "within")
+eng_panel <- OLSengine:::panel_engine(y ~ x1 + x2, data = panel_df,
+                                      entity_id = "id", time_id = "time",
+                                      method = "fe")
+
+# Add to comparison table
+panel_rows <- data.frame(
+  Parameter = c(
+    "Panel FE: Coefficient (x1)",
+    "Panel FE: SE (x1)"
+  ),
+  Base_R = c(
+    coef(base_plm)["x1"],
+    summary(base_plm)$coefficients["x1", "Std. Error"]
+  ),
+  Proposed_Engine = c(
+    eng_panel$coefficients["x1"],
+    eng_panel$se["x1"]
+  )
+)
+
+panel_rows$Absolute_Difference <- abs(panel_rows$Base_R - panel_rows$Proposed_Engine)
+panel_rows$Base_R <- sprintf("%.4f", panel_rows$Base_R)
+panel_rows$Proposed_Engine <- sprintf("%.4f", panel_rows$Proposed_Engine)
+panel_rows$Absolute_Difference <- sprintf("%.6f", panel_rows$Absolute_Difference)
+
+# Combine with existing table
+comparison_table <- rbind(comparison_table, panel_rows)
+print(comparison_table)

@@ -998,4 +998,51 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
          labels = sprintf("%.2f", plot_data$B),
          pos = 3, offset = 0.8, cex = 0.9, col = "black", font = 2)
   }
+
+  # =======================================================
+  # 4. PANEL DATA PLOT: Forest Plot with Method Label
+  # =======================================================
+  else if (method == "panel") {
+    # Get the table (name varies by FE or RE)
+    table_name <- names(model_object$tables)[1]
+    est_table <- model_object$tables[[1]]
+
+    # Reverse order so the first variable appears at the top
+    plot_data <- est_table[nrow(est_table):1, ]
+
+    y_pos <- 1:nrow(plot_data)
+
+    # Margin on X to fit the numbers
+    x_min <- min(plot_data$CI_95_Low) - abs(min(plot_data$CI_95_Low) * 0.3)
+    x_max <- max(plot_data$CI_95_High) + abs(max(plot_data$CI_95_High) * 0.3)
+
+    # Determine method for title
+    panel_method <- gsub("Table2_Panel_", "", table_name)
+    panel_method <- gsub("_", " ", panel_method)
+
+    plot(plot_data$B, y_pos, type = "n",
+         xlim = c(x_min, x_max), ylim = c(0.5, nrow(plot_data) + 0.5),
+         axes = FALSE, ylab = "", xlab = "Coefficient Estimate (95% CI)",
+         main = paste0("Panel Data (", panel_method, ")"))
+
+    # Axes
+    axis(1)
+    axis(2, at = y_pos, labels = plot_data$Predictor, las = 1, tick = TRUE)
+    box(bty = "l")
+
+    # Zero line
+    abline(v = 0, lty = 2, col = "gray60")
+
+    # Confidence intervals
+    arrows(x0 = plot_data$CI_95_Low, y0 = y_pos, x1 = plot_data$CI_95_High, y1 = y_pos,
+           code = 3, angle = 90, length = 0.05, lwd = 1.5, col = "gray30")
+
+    # Coefficients
+    points(plot_data$B, y_pos, pch = 15, cex = 1.5, col = "black")
+
+    # Values
+    text(x = plot_data$B, y = y_pos,
+         labels = sprintf("%.2f", plot_data$B),
+         pos = 3, offset = 0.8, cex = 0.9, col = "black", font = 2)
+  }
 }
