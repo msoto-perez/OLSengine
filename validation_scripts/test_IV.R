@@ -5,8 +5,9 @@
 # Clear environment for pure reproducibility
 rm(list = ls())
 
-# Load from local development
-devtools::load_all()
+# install directly from GitHub and load
+devtools::install_github("msoto-perez/OLSengine")
+library(OLSengine)
 
 # 1. Simulate IV data with endogeneity
 set.seed(456)
@@ -31,8 +32,10 @@ cat("\n======================================================\n")
 cat("--- NAIVE OLS (Biased due to endogeneity) ---\n")
 cat("======================================================\n")
 naive_ols <- paper_engine(y ~ x, data = test_data_iv, model = "ols")
+
 cat("\n>> OLS Coefficient (BIASED):\n")
 print(naive_ols$tables$Table2_OLS_Estimation)
+
 cat("\n>> Expected: Coefficient on x should be biased UPWARD (> 1.5 true effect)\n")
 
 cat("\n\n======================================================\n")
@@ -103,4 +106,8 @@ print(iv_over$messages)
 cat("\n\n======================================================\n")
 cat(">> Test Complete: IV engine functional\n")
 cat("======================================================\n")
+
+# 5. Test plot
+cat("\n>> GENERANDO GRÁFICO APA EN EL PANEL DE PLOTS...\n")
+plot_engine(iv_model)
 
