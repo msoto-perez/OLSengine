@@ -4,7 +4,7 @@
 #################################################
 
 #' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test ks.test lm median model.matrix na.omit pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test wilcox.test
-#' @importFrom graphics abline arrows axis box lines par points text
+#' @importFrom graphics abline arrows axis box lines par points text plot legend
 NULL
 
 # =========================================================
@@ -308,10 +308,10 @@ logit_engine <- function(formula, data) {
   res_dev <- fit$deviance
   n <- nrow(data)
 
-  # McFadden Pseudo R² (original metric)
+  # McFadden Pseudo R\u00b2 (original metric)
   pseudo_r2_mcfadden <- 1 - (res_dev / null_dev)
 
-  # Nagelkerke Pseudo R² (normalized to [0,1] range for better interpretability)
+  # Nagelkerke Pseudo R\u00b2 (normalized to [0,1] range for better interpretability)
   r2_cox_snell <- 1 - exp((res_dev - null_dev) / n)
   r2_max <- 1 - exp(-null_dev / n)
   pseudo_r2_nagelkerke <- r2_cox_snell / r2_max
@@ -425,7 +425,7 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
   vcov_fe <- sigma2_fe * XX_inv
   se_fe <- sqrt(diag(vcov_fe))
 
-  # R² within
+  # R\u00b2 within
   tss_within <- sum((y_demeaned - mean(y_demeaned))^2)
   rss_within <- sum(resid_fe^2)
   r2_within <- max(0, 1 - (rss_within / tss_within))
@@ -471,7 +471,7 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
   se_re_full <- sqrt(diag(vcov_re))
   se_re <- se_re_full[-1]
 
-  # R² overall (for RE)
+  # R\u00b2 overall (for RE)
   y_grand_mean <- mean(y)
   tss_overall <- sum((y - y_grand_mean)^2)
   y_fitted_re <- intercept_re + as.vector(X %*% beta_re)
@@ -646,14 +646,14 @@ iv_engine <- function(formula, data, instruments) {
     gamma_j <- as.vector(ZZ_inv %*% crossprod(Z_int, X[, j]))
     X_fitted[, j] <- as.vector(Z_int %*% gamma_j)
 
-    # R² and F-stat for first stage
+    # R\u00b2 and F-stat for first stage
     resid_fs <- X[, j] - X_fitted[, j]
     tss_fs <- sum((X[, j] - mean(X[, j]))^2)
     rss_fs <- sum(resid_fs^2)
     first_stage_r2[j] <- 1 - (rss_fs / tss_fs)
 
     # F-stat for joint significance of instruments (excluding intercept)
-    # F = (R²/(k_z)) / ((1-R²)/(n - k_z - 1))
+    # F = (R\u00b2/(k_z)) / ((1-R\u00b2)/(n - k_z - 1))
     first_stage_fstat[j] <- (first_stage_r2[j] / k_z) / ((1 - first_stage_r2[j]) / (n - k_z - 1))
   }
 
@@ -666,13 +666,13 @@ iv_engine <- function(formula, data, instruments) {
   }
 
   # ============================================
-  # STAGE 2: Second-Stage Regression (Y ~ X̂)
+  # STAGE 2: Second-Stage Regression (Y ~ X-hat)
   # ============================================
 
   # Add intercept to fitted X
   X_fitted_int <- cbind(1, X_fitted)
 
-  # OLS: Y = X̂ * beta + error
+  # OLS: Y = X-hat * beta + error
   XX_inv <- solve(crossprod(X_fitted_int))
   beta_2sls <- as.vector(XX_inv %*% crossprod(X_fitted_int, y))
 
@@ -696,7 +696,7 @@ iv_engine <- function(formula, data, instruments) {
   names(beta_iv) <- x_names
   names(se_iv) <- x_names
 
-  # R² (warning: R² can be negative or > 1 in IV, so report with caution)
+  # R\u00b2 (warning: R\u00b2 can be negative or > 1 in IV, so report with caution)
   tss <- sum((y - mean(y))^2)
   rss <- sum(resid_2sls^2)
   r2_iv <- 1 - (rss / tss)
@@ -716,7 +716,7 @@ iv_engine <- function(formula, data, instruments) {
     gamma_resid <- as.vector(ZZ_inv_resid %*% crossprod(Z_int_resid, resid_2sls))
     resid_fitted <- as.vector(Z_int_resid %*% gamma_resid)
 
-    # Sargan stat = n * R² from auxiliary regression
+    # Sargan stat = n * R\u00b2 from auxiliary regression
     tss_aux <- sum((resid_2sls - mean(resid_2sls))^2)
     rss_aux <- sum((resid_2sls - resid_fitted)^2)
     r2_aux <- 1 - (rss_aux / tss_aux)
@@ -801,7 +801,7 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
   }
 
   # ============================================
-  # DiD REGRESSION: Y ~ Treated + Post + (Treated × Post) + Controls
+  # DiD REGRESSION: Y ~ Treated + Post + (Treated x Post) + Controls
   # ============================================
 
   # Build design matrix
@@ -833,7 +833,7 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
   did_t <- did_coef / did_se
   did_p <- 2 * pt(-abs(did_t), df = df_residual)
 
-  # R²
+  # R\u00b2
   tss <- sum((y - mean(y))^2)
   rss <- sum(resid_did^2)
   r2_did <- 1 - (rss / tss)
@@ -871,7 +871,7 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
   # GROUP MEANS FOR VISUALIZATION
   # ============================================
 
-  # Calculate means for each group × time combination
+  # Calculate means for each group x time combination
   mean_treated_pre <- mean(y[treated == 1 & post == 0], na.rm = TRUE)
   mean_treated_post <- mean(y[treated == 1 & post == 1], na.rm = TRUE)
   mean_control_pre <- mean(y[treated == 0 & post == 0], na.rm = TRUE)
@@ -1068,7 +1068,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     max_vif <- max(raw$vif, na.rm = TRUE)
     if (max_vif > 5) {
       vif_warning <- sprintf(
-        "WARNING (Multicollinearity): Maximum VIF = %.2f exceeds conventional threshold of 5 (O'Brien, 2007). High collinearity inflates standard errors and may obscure true predictor effects. Note: VIF thresholds are disciplinary conventions, not absolute cutoffs—interpret in context of your research design.",
+        "WARNING (Multicollinearity): Maximum VIF = %.2f exceeds conventional threshold of 5 (O'Brien, 2007). High collinearity inflates standard errors and may obscure true predictor effects. Note: VIF thresholds are disciplinary conventions, not absolute cutoffs - interpret in context of your research design.",
         max_vif
       )
       aduana_messages <- c(aduana_messages, vif_warning)
@@ -1153,7 +1153,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     }
 
     aduana_messages <- c(aduana_messages, sprintf("INFO: Classification Accuracy (Threshold 0.5) = %.1f%%", raw$diagnostics$accuracy * 100))
-    aduana_messages <- c(aduana_messages, sprintf("INFO: McFadden Pseudo R² = %.3f | Nagelkerke Pseudo R² = %.3f", raw$pseudo_r2_mcfadden, raw$pseudo_r2_nagelkerke))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: McFadden Pseudo R\u00b2 = %.3f | Nagelkerke Pseudo R\u00b2 = %.3f", raw$pseudo_r2_mcfadden, raw$pseudo_r2_nagelkerke))
   }
 
   # --- PANEL DATA BRANCH ---
@@ -1183,7 +1183,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
 
     # Panel-specific diagnostics
     aduana_messages <- c(aduana_messages, sprintf("INFO: Panel structure - N entities = %d, T periods = %d, Total obs = %d", raw$n_entities, raw$n_time, raw$n_obs))
-    aduana_messages <- c(aduana_messages, sprintf("INFO: R² (%s) = %.3f", ifelse(raw$method == "Fixed Effects", "within", "overall"), raw$r2))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: R\u00b2 (%s) = %.3f", ifelse(raw$method == "Fixed Effects", "within", "overall"), raw$r2))
 
     if (!is.na(raw$hausman_p)) {
       aduana_messages <- c(aduana_messages, sprintf("INFO: Hausman test statistic = %.2f (p = %.3f)", raw$hausman_stat, raw$hausman_p))
@@ -1219,9 +1219,9 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     aduana_messages <- c(aduana_messages, sprintf("INFO: Sample size N = %d, Number of instruments = %d", raw$n_obs, raw$n_instruments))
 
     if (raw$r2 < 0 || raw$r2 > 1) {
-      aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f (can be negative or > 1 in IV models due to endogeneity correction)", raw$r2))
+      aduana_messages <- c(aduana_messages, sprintf("INFO: R\u00b2 = %.3f (can be negative or > 1 in IV models due to endogeneity correction)", raw$r2))
     } else {
-      aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f", raw$r2))
+      aduana_messages <- c(aduana_messages, sprintf("INFO: R\u00b2 = %.3f", raw$r2))
     }
   }
 
@@ -1254,7 +1254,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     # DiD-specific diagnostics
     aduana_messages <- c(aduana_messages, sprintf("INFO: DiD Effect (Treated:Post interaction) = %.3f (SE = %.3f, p %s)", raw$did_estimate, raw$did_se, p_formatted[names(coefs) == "Treated:Post"]))
     aduana_messages <- c(aduana_messages, sprintf("INFO: Sample size N = %d", raw$n_obs))
-    aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f", raw$r2))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: R\u00b2 = %.3f", raw$r2))
   }
 
   # --- WRAP-UP ---
