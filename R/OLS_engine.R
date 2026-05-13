@@ -577,7 +577,189 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
 }
 
 # =========================================================
-# 6. WRAPPER FUNCTION (Paper Engine & Customs router)
+# 6. INSTRUMENTAL VARIABLES ENGINE (2SLS in Base R)
+# =========================================================
+# Internal function: IV estimation (not exported)
+iv_engine <- function(formula, data, instruments) {
+
+  # Parse formula: y ~ x1 + x2 + ... (endogenous predictors)
+  vars_in_model <- all.vars(formula)
+  y_name <- vars_in_model[1]
+  x_names <- vars_in_model[-1]
+
+  # Parse instruments formula: ~ z1 + z2 + ... (instruments)
+  # Handle both formula and character vector
+  if (inherits(instruments, "formula")) {
+    z_names <- all.vars(instruments)
+  } else {
+    z_names <- instruments
+  }
+
+  # Validate that instrument variables exist in data
+  missing_z <- setdiff(z_names, names(data))
+  if (length(missing_z) > 0) {
+    stop("Structural Error: The following instruments do not exist in the dataset: ",
+         paste(missing_z, collapse = ", "))
+  }
+
+  # Extract data
+  y <- data[[y_name]]
+  X <- as.matrix(data[, x_names, drop = FALSE])
+  Z <- as.matrix(data[, z_names, drop = FALSE])
+
+  n <- nrow(data)
+  k_x <- ncol(X)
+  k_z <- ncol(Z)
+
+  aduana_msgs <- character(0)
+
+  # Check identification
+  if (k_z < k_x) {
+    stop("Structural Error: Under-identification. Number of instruments (", k_z,
+         ") must be >= number of endogenous variables (", k_x, ").")
+  }
+
+  # Check for multicollinearity in instruments
+  if (k_z > 1) {
+    z_cor <- cor(Z)
+    max_z_cor <- max(abs(z_cor[upper.tri(z_cor)]))
+    if (max_z_cor > 0.95) {
+      aduana_msgs <- c(aduana_msgs, sprintf("WARNING: High correlation (%.3f) detected between instruments. This may indicate redundancy.", max_z_cor))
+    }
+  }
+
+  # ============================================
+  # STAGE 1: First-Stage Regressions (X ~ Z)
+  # ============================================
+
+  # Add intercept to Z
+  Z_int <- cbind(1, Z)
+
+  # First stage: regress each endogenous variable on all instruments
+  X_fitted <- matrix(NA, nrow = n, ncol = k_x)
+  first_stage_r2 <- numeric(k_x)
+  first_stage_fstat <- numeric(k_x)
+
+  for (j in 1:k_x) {
+    # OLS: X_j = Z * gamma + error
+    ZZ_inv <- solve(crossprod(Z_int))
+    gamma_j <- as.vector(ZZ_inv %*% crossprod(Z_int, X[, j]))
+    X_fitted[, j] <- as.vector(Z_int %*% gamma_j)
+
+    # R² and F-stat for first stage
+    resid_fs <- X[, j] - X_fitted[, j]
+    tss_fs <- sum((X[, j] - mean(X[, j]))^2)
+    rss_fs <- sum(resid_fs^2)
+    first_stage_r2[j] <- 1 - (rss_fs / tss_fs)
+
+    # F-stat for joint significance of instruments (excluding intercept)
+    # F = (R²/(k_z)) / ((1-R²)/(n - k_z - 1))
+    first_stage_fstat[j] <- (first_stage_r2[j] / k_z) / ((1 - first_stage_r2[j]) / (n - k_z - 1))
+  }
+
+  # Weak instruments test (Stock & Yogo, 2005)
+  min_fstat <- min(first_stage_fstat)
+  if (min_fstat < 10) {
+    aduana_msgs <- c(aduana_msgs, sprintf("CRITICAL WARNING (Weak Instruments): Minimum first-stage F-statistic = %.2f (< 10). Instruments may be too weak for reliable causal inference (Stock & Yogo, 2005).", min_fstat))
+  } else {
+    aduana_msgs <- c(aduana_msgs, sprintf("INFO: First-stage F-statistic = %.2f (> 10). Instruments pass relevance threshold (Stock & Yogo, 2005).", min_fstat))
+  }
+
+  # ============================================
+  # STAGE 2: Second-Stage Regression (Y ~ X̂)
+  # ============================================
+
+  # Add intercept to fitted X
+  X_fitted_int <- cbind(1, X_fitted)
+
+  # OLS: Y = X̂ * beta + error
+  XX_inv <- solve(crossprod(X_fitted_int))
+  beta_2sls <- as.vector(XX_inv %*% crossprod(X_fitted_int, y))
+
+  # Residuals (using ORIGINAL X, not fitted)
+  X_int <- cbind(1, X)
+  resid_2sls <- y - as.vector(X_int %*% beta_2sls)
+
+  # Variance estimation (robust to heteroskedasticity)
+  sigma2_2sls <- sum(resid_2sls^2) / (n - k_x - 1)
+
+  # Standard errors (need to account for first stage uncertainty)
+  # Use Z as instrument matrix for variance
+  PZ <- Z_int %*% solve(crossprod(Z_int)) %*% t(Z_int)
+  X_tilde <- PZ %*% X_int
+  vcov_2sls <- sigma2_2sls * solve(crossprod(X_tilde))
+  se_2sls <- sqrt(diag(vcov_2sls))
+
+  # Coefficients (remove intercept for output)
+  beta_iv <- beta_2sls[-1]
+  se_iv <- se_2sls[-1]
+  names(beta_iv) <- x_names
+  names(se_iv) <- x_names
+
+  # R² (warning: R² can be negative or > 1 in IV, so report with caution)
+  tss <- sum((y - mean(y))^2)
+  rss <- sum(resid_2sls^2)
+  r2_iv <- 1 - (rss / tss)
+
+  # ============================================
+  # OVERIDENTIFICATION TEST (Sargan/Hansen)
+  # ============================================
+
+  sargan_stat <- NA
+  sargan_p <- NA
+
+  if (k_z > k_x) {
+    # Overidentified: more instruments than endogenous variables
+    # Sargan test: regress residuals on all instruments
+    Z_int_resid <- Z_int
+    ZZ_inv_resid <- solve(crossprod(Z_int_resid))
+    gamma_resid <- as.vector(ZZ_inv_resid %*% crossprod(Z_int_resid, resid_2sls))
+    resid_fitted <- as.vector(Z_int_resid %*% gamma_resid)
+
+    # Sargan stat = n * R² from auxiliary regression
+    tss_aux <- sum((resid_2sls - mean(resid_2sls))^2)
+    rss_aux <- sum((resid_2sls - resid_fitted)^2)
+    r2_aux <- 1 - (rss_aux / tss_aux)
+    sargan_stat <- n * r2_aux
+    sargan_p <- pchisq(sargan_stat, df = k_z - k_x, lower.tail = FALSE)
+
+    if (sargan_p < 0.05) {
+      aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Overidentification): Sargan test p = %.3f (< .05). Some instruments may be invalid (correlated with error term).", sargan_p))
+    } else {
+      aduana_msgs <- c(aduana_msgs, sprintf("INFO: Sargan test p = %.3f (> .05). Overidentifying restrictions are satisfied.", sargan_p))
+    }
+  } else if (k_z == k_x) {
+    aduana_msgs <- c(aduana_msgs, "INFO: Exact identification (# instruments = # endogenous variables). Sargan test not applicable.")
+  }
+
+  # ============================================
+  # RETURN RESULTS
+  # ============================================
+
+  return(list(
+    coefficients = beta_iv,
+    se = se_iv,
+    first_stage_fstat = first_stage_fstat,
+    first_stage_r2 = first_stage_r2,
+    r2 = r2_iv,
+    sargan_stat = sargan_stat,
+    sargan_p = sargan_p,
+    n_obs = n,
+    n_instruments = k_z,
+    n_endogenous = k_x,
+    df_residual = n - k_x - 1,
+    diagnostics = list(
+      r2 = r2_iv,
+      n = n,
+      first_stage_fstat = min(first_stage_fstat),
+      sargan_p = sargan_p
+    ),
+    aduana_msgs = aduana_msgs
+  ))
+}
+
+# =========================================================
+# 7. WRAPPER FUNCTION (Paper Engine & Customs router)
 # =========================================================
 
 #' Transparent and Assisted Linear Modeling Engine
@@ -592,7 +774,7 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
 #' @param formula A \code{formula} object specifying the model (e.g., \code{y ~ x1 + x2}).
 #' @param data A data frame containing all variables referenced in \code{formula}.
 #' @param model A character string indicating the estimation engine.
-#'   One of \code{"ols"} (default), \code{"anova"}, \code{"logit"}, or \code{"panel"}.
+#'   One of \code{"ols"} (default), \code{"anova"}, \code{"logit"}, \code{"panel"}, or \code{"iv"}.
 #' @param robust Logical or \code{"auto"}. Controls heteroskedasticity-robust
 #'   standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
 #'   applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
@@ -610,6 +792,10 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
 #' @param method Character string for panel data. One of \code{"auto"} (default,
 #'   uses Hausman test to select between FE and RE), \code{"fe"} (Fixed Effects),
 #'   or \code{"re"} (Random Effects). Only used when \code{model = "panel"}.
+#' @param instruments A \code{formula} specifying instrumental variables for IV models
+#'   (e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}. Instruments must
+#'   satisfy relevance (correlated with endogenous X) and exogeneity (uncorrelated
+#'   with error term).
 #' @param digits Integer. Number of decimal places in output tables.
 #'   Default is \code{2}.
 #'
@@ -618,7 +804,7 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
 #'     \item{tables}{A list of formatted data frames with estimation results.}
 #'     \item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
 #'     \item{messages}{A character vector of methodological guidance messages from the customs layer.}
-#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, \code{"logit"}, or \code{"panel"}).}
+#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, \code{"logit"}, \code{"panel"}, or \code{"iv"}).}
 #'     \item{data}{The cleaned data frame used for estimation (after listwise deletion).}
 #'   }
 #'
@@ -645,9 +831,10 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
 paper_engine <- function(formula, data, model = "ols", robust = FALSE,
                          non_parametric = FALSE, paired = FALSE,
                          entity_id = NULL, time_id = NULL, method = "auto",
+                         instruments = NULL,
                          digits = 2) {
 
-  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit", "panel"))
+  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit", "panel", "iv"))
 
   # Validate panel data parameters
   if (model == "panel") {
@@ -656,8 +843,26 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     }
   }
 
-  # Pass extra variables for panel data
-  extra_vars <- if (model == "panel") c(entity_id, time_id) else NULL
+  # Validate IV parameters
+  if (model == "iv") {
+    if (is.null(instruments)) {
+      stop("Instrumental variables models require 'instruments' parameter (a formula like ~ z1 + z2).")
+    }
+  }
+
+  # Pass extra variables for panel data and IV
+  extra_vars <- NULL
+  if (model == "panel") {
+    extra_vars <- c(entity_id, time_id)
+  } else if (model == "iv") {
+    # Extract instrument variable names from formula
+    if (inherits(instruments, "formula")) {
+      extra_vars <- all.vars(instruments)
+    } else {
+      extra_vars <- instruments
+    }
+  }
+
   filter_res <- pre_estimation_filter(formula, data, extra_vars = extra_vars)
 
   clean_data <- filter_res$clean_data
@@ -814,6 +1019,41 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     }
   }
 
+  # --- INSTRUMENTAL VARIABLES BRANCH ---
+  else if (model == "iv") {
+    raw <- iv_engine(formula, clean_data, instruments = instruments)
+    aduana_messages <- c(aduana_messages, raw$aduana_msgs)
+
+    coefs <- raw$coefficients
+    se <- raw$se
+    t_stats <- coefs / se
+    p_vals <- 2 * pt(abs(t_stats), df = raw$df_residual, lower.tail = FALSE)
+    p_formatted <- ifelse(p_vals < 0.001, "< .001", sprintf(paste0("%.", digits, "f"), p_vals))
+
+    t_crit <- qt(0.975, df = raw$df_residual)
+
+    out_table <- data.frame(
+      Predictor = names(coefs),
+      B = round(coefs, digits),
+      SE = round(se, digits),
+      t = round(t_stats, digits),
+      p = p_formatted,
+      CI_95_Low = round(coefs - t_crit * se, digits),
+      CI_95_High = round(coefs + t_crit * se, digits)
+    )
+
+    table_name <- "Table2_IV_2SLS"
+
+    # IV-specific diagnostics
+    aduana_messages <- c(aduana_messages, sprintf("INFO: Sample size N = %d, Number of instruments = %d", raw$n_obs, raw$n_instruments))
+
+    if (raw$r2 < 0 || raw$r2 > 1) {
+      aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f (can be negative or > 1 in IV models due to endogeneity correction)", raw$r2))
+    } else {
+      aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f", raw$r2))
+    }
+  }
+
   # --- WRAP-UP ---
   if(length(aduana_messages) == 0) {
     aduana_messages <- "Success: The model meets all diagnosed assumptions and there was no severe data loss."
@@ -836,7 +1076,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
 }
 
 # =========================================================
-# 7. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
+# 8. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
 # =========================================================
 
 #' Generate Publication-Ready Plots for Basic Models
@@ -1035,6 +1275,49 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
 
     # Confidence intervals
     arrows(x0 = plot_data$CI_95_Low, y0 = y_pos, x1 = plot_data$CI_95_High, y1 = y_pos,
+           code = 3, angle = 90, length = 0.05, lwd = 1.5, col = "gray30")
+
+    # Coefficients
+    points(plot_data$B, y_pos, pch = 15, cex = 1.5, col = "black")
+
+    # Values
+    text(x = plot_data$B, y = y_pos,
+         labels = sprintf("%.2f", plot_data$B),
+         pos = 3, offset = 0.8, cex = 0.9, col = "black", font = 2)
+  }
+
+  # =======================================================
+  # 5. INSTRUMENTAL VARIABLES PLOT: Forest Plot with 2SLS
+  # =======================================================
+  else if (method == "iv") {
+    # Get the IV table
+    est_table <- model_object$tables$Table2_IV_2SLS
+
+    # Reverse order so the first variable appears at the top
+    plot_data <- est_table[nrow(est_table):1, ]
+
+    y_pos <- 1:nrow(plot_data)
+
+    # Margin on X to fit the numbers
+    x_min <- min(plot_data$CI_95_Low) - abs(min(plot_data$CI_95_Low) * 0.3)
+    x_max <- max(plot_data$CI_95_High) + abs(max(plot_data$CI_95_High) * 0.3)
+
+    plot(plot_data$B, y_pos, type = "n",
+         xlim = c(x_min, x_max), ylim = c(0.5, nrow(plot_data) + 0.5),
+         axes = FALSE, ylab = "", xlab = "Coefficient Estimate (95% CI)",
+         main = "Instrumental Variables (2SLS)")
+
+    # Axes
+    axis(1)
+    axis(2, at = y_pos, labels = plot_data$Predictor, las = 1, tick = TRUE)
+    box(bty = "l")
+
+    # Zero line
+    abline(v = 0, lty = 2, col = "gray60")
+
+    # Confidence intervals
+    arrows(x0 = plot_data$CI_95_Low, y0 = y_pos,
+           x1 = plot_data$CI_95_High, y1 = y_pos,
            code = 3, angle = 90, length = 0.05, lwd = 1.5, col = "gray30")
 
     # Coefficients
