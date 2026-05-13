@@ -76,22 +76,22 @@ Default is \code{2}.}
 }
 \value{
 An object of class \code{basic_model}, which is a list containing:
-\describe{
-\item{tables}{A list of formatted data frames with estimation results.}
-\item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
-\item{messages}{A character vector of methodological guidance messages from the customs layer.}
-\item{method}{A character string indicating the engine used (\code{"ols"},
-\code{"anova"}, \code{"logit"}, \code{"panel"}, \code{"iv"}, or \code{"did"}).}
-\item{data}{The cleaned data frame used for estimation (after listwise deletion).}
-}
+  \describe{
+    \item{tables}{A list of formatted data frames with estimation results.}
+    \item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
+    \item{messages}{A character vector of methodological guidance messages from the customs layer.}
+    \item{method}{A character string indicating the engine used (\code{"ols"},
+      \code{"anova"}, \code{"logit"}, \code{"panel"}, \code{"iv"}, or \code{"did"}).}
+    \item{data}{The cleaned data frame used for estimation (after listwise deletion).}
+  }
 }
 \description{
 Estimates OLS regression, ANOVA/t-tests, binary logistic
-regression, panel data models, instrumental variables, or difference-in-differences
-using pure base R matrix algebra. Automatically audits statistical assumptions
-through an integrated methodological customs layer and returns publication-ready
-APA-formatted tables. Designed for applied researchers and early-career academics
-who need a single, transparent workflow from estimation to reporting.
+  regression, panel data models, instrumental variables, or difference-in-differences
+  using pure base R matrix algebra. Automatically audits statistical assumptions
+  through an integrated methodological customs layer and returns publication-ready
+  APA-formatted tables. Designed for applied researchers and early-career academics
+  who need a single, transparent workflow from estimation to reporting.
 }
 \examples{
 # OLS example

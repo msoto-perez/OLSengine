@@ -1,21 +1,26 @@
 Package: OLSengine
-Title: Transparent and Assisted Linear Modeling Engine
-Version: 1.0.0
+Type: Package
+Title: Transparent Linear and Causal Inference Models for Social Sciences
+Version: 1.1.0
 Authors@R: 
-    person("Manuel", "Soto-Pérez",, "msoto@up.edu.mx", role = c("aut", "cre"))
-Description: A transparent, modular, and base-R implemented statistical engine 
-    for linear regression (OLS), analysis of variance (ANOVA), and logistic 
-    regression (Logit). Designed under the principle of "assisted simplicity", 
-    it features an integrated methodological "customs" (Aduana) that automatically 
-    audits mathematical assumptions (e.g., multicollinearity, heteroskedasticity, 
-    normality, and perfect separation) and outputs publication-ready, APA-formatted 
-    tables. It deliberately avoids hidden heuristics and external dependencies, 
-    ensuring computational transparency and reproducibility for applied research. 
+    person("Manuel", "Soto-Pérez", , "manuel.sotop@gmail.com", 
+           role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-8249-7410"))
+Description: Unified estimation, diagnostics, and reporting for ordinary least 
+    squares (OLS) regression, ANOVA/t-tests, logistic regression, panel data 
+    (fixed/random effects with Hausman test), instrumental variables (2SLS with 
+    weak instrument diagnostics), and difference-in-differences. Designed for 
+    applied researchers in social sciences with integrated "Methodological Customs" 
+    that audit assumptions and provide literature references. All methods 
+    implemented in pure base R without external dependencies beyond stats and 
+    graphics packages.
 License: MIT + file LICENSE
-URL: https://github.com/msoto-perez/OLSEngine
-BugReports: https://github.com/msoto-perez/OLSEngine/issues
 Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Depends: R (>= 3.5.0)
+Imports: stats, graphics
+Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
 VignetteBuilder: knitr
-Suggests: knitr, rmarkdown
+URL: https://github.com/msoto-perez/OLSengine
+BugReports: https://github.com/msoto-perez/OLSengine/issues
+RoxygenNote: 7.3.3
+LazyData: true

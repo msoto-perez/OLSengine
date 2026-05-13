@@ -7,22 +7,22 @@
 \format{
 A data frame with 397 observations and 7 variables:
 \describe{
-\item{rank}{Factor with 3 levels: \code{"AsstProf"} (Assistant Professor),
-\code{"AssocProf"} (Associate Professor), \code{"Prof"} (Full Professor).
-Represents academic rank.}
-\item{discipline}{Factor with 2 levels: \code{"A"} (theoretical departments,
-e.g., mathematics, physics) and \code{"B"} (applied departments, e.g.,
-engineering, business). Represents academic discipline category.}
-\item{years_since_phd}{Numeric. Number of years since the faculty member
-earned their PhD.}
-\item{years_service}{Numeric. Number of years the faculty member has served
-at this institution.}
-\item{sex}{Factor with 2 levels: \code{"Female"} and \code{"Male"}.}
-\item{salary}{Numeric. Nine-month academic salary in U.S. dollars (2008-09
-academic year).}
-\item{high_earner}{Integer. Binary indicator (0 = No, 1 = Yes) marking
-faculty in the top 33\\% of salaries. Created for logistic regression
-demonstrations.}
+  \item{rank}{Factor with 3 levels: \code{"AsstProf"} (Assistant Professor),
+    \code{"AssocProf"} (Associate Professor), \code{"Prof"} (Full Professor).
+    Represents academic rank.}
+  \item{discipline}{Factor with 2 levels: \code{"A"} (theoretical departments,
+    e.g., mathematics, physics) and \code{"B"} (applied departments, e.g.,
+    engineering, business). Represents academic discipline category.}
+  \item{years_since_phd}{Numeric. Number of years since the faculty member
+    earned their PhD.}
+  \item{years_service}{Numeric. Number of years the faculty member has served
+    at this institution.}
+  \item{sex}{Factor with 2 levels: \code{"Female"} and \code{"Male"}.}
+  \item{salary}{Numeric. Nine-month academic salary in U.S. dollars (2008-09
+    academic year).}
+  \item{high_earner}{Integer. Binary indicator (0 = No, 1 = Yes) marking
+    faculty in the top 33\% of salaries. Created for logistic regression
+    demonstrations.}
 }
 }
 \source{
@@ -38,20 +38,20 @@ academic_salaries
 }
 \description{
 Real data on 9-month academic salaries for assistant professors,
-associate professors, and full professors at a U.S. college. This dataset
-is provided for educational purposes to demonstrate regression modeling,
-ANOVA, and logistic regression with \code{\link{paper_engine}}.
+  associate professors, and full professors at a U.S. college. This dataset
+  is provided for educational purposes to demonstrate regression modeling,
+  ANOVA, and logistic regression with \code{\link{paper_engine}}.
 }
 \details{
 This dataset enables demonstration of OLSengine's three core methods:
 \itemize{
-\item \strong{OLS Regression}: Modeling salary as a function of rank,
-discipline, experience, and sex to assess wage determinants and potential
-gender disparities.
-\item \strong{ANOVA}: Comparing mean salaries across academic ranks or
-disciplines.
-\item \strong{Logistic Regression}: Predicting the probability of being a
-high earner based on experience, rank, and discipline.
+  \item \strong{OLS Regression}: Modeling salary as a function of rank,
+    discipline, experience, and sex to assess wage determinants and potential
+    gender disparities.
+  \item \strong{ANOVA}: Comparing mean salaries across academic ranks or
+    disciplines.
+  \item \strong{Logistic Regression}: Predicting the probability of being a
+    high earner based on experience, rank, and discipline.
 }
 
 The data were collected in the 2008-09 academic year and reflect institutional

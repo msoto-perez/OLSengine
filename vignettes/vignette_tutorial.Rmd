@@ -1,7 +1,7 @@
 ---
 title: "OLSengine: Assisted Simplicity Tutorial"
 author: "msoto-perez"
-date: "r Sys.Date()"
+date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{OLSengine Tutorial}
@@ -10,38 +10,48 @@ vignette: >
 ---
 
 # 1. Introduction
-The philosophy of **Assisted Simplicity** aims to bridge the gap between complex computation and methodological rigor.
 
-## 2. Case Study: Heteroskedasticity
-In social sciences, variance often increases with the scale of the predictor. Let's see how `OLSengine` handles this.
+The philosophy of **Assisted Simplicity** aims to bridge the gap between complex computation and methodological rigor. **OLSengine** provides six estimation engines in a single, unified interface: OLS regression, ANOVA/t-tests, logistic regression, panel data, instrumental variables (2SLS), and difference-in-differences.
+
+All methods are implemented in pure base R with integrated **Methodological Customs** that audit assumptions and guide researchers toward robust alternatives.
+
+---
+
+# 2. OLS Regression: Handling Heteroskedasticity
+
+In social sciences, variance often increases with the scale of the predictor. Let's see how `OLSengine` detects and handles this.
 
 ```{r, message=FALSE}
 library(OLSengine)
 
-# 1. Simulate data with non-constant variance
+# Simulate data with non-constant variance
 set.seed(123)
 n <- 200
 x <- rnorm(n, 50, 10)
 y <- 10 + 0.5 * x + rnorm(n, 0, x * 0.2) # Heteroskedasticity
+
 df <- data.frame(y, x)
 
-# 2. Run the engine
+# Run the engine
 model <- paper_engine(y ~ x, data = df, model = "ols")
+model$messages
 ```
 
-### Aduana Feedback
-The "Aduana" messages provide critical guidance:
+### Correcting with Robust Standard Errors
 
-### Correcting the Model
-Following the advice, we apply robust standard errors:
+Following the Aduana's advice, we apply HC3 robust standard errors:
 
 ```{r}
 model_robust <- paper_engine(y ~ x, data = df, model = "ols", robust = TRUE)
 model_robust$tables$Table2_OLS_Estimation
+plot_engine(model_robust)
 ```
 
-## 3. Case Study 2: Experimental Logic (ANOVA/T-Test)
-In experimental research, we often compare groups. `OLSengine` automatically checks for normality and variance homogeneity to decide if a Parametric or Non-Parametric approach is needed.
+---
+
+# 3. ANOVA/t-tests: Experimental Comparisons
+
+In experimental research, we often compare groups. `OLSengine` automatically checks normality and variance homogeneity.
 
 ```{r}
 # Simulating 3 groups with non-normal distribution
@@ -51,15 +61,19 @@ group_data <- data.frame(
   group = rep(c("Control", "Treatment A", "Treatment B"), each = 30)
 )
 
-# Run ANOVA engine with "auto" non-parametric detection
-model_anova <- paper_engine(score ~ group, data = group_data, model = "anova", non_parametric = "auto")
+# Auto-pilot switches to non-parametric if normality fails
+model_anova <- paper_engine(score ~ group, data = group_data, 
+                            model = "anova", non_parametric = "auto")
 
-# View the result (it will automatically use Kruskal-Wallis if normality fails)
-model_anova$tables$Table1_ANOVA_Results
+model_anova$tables$Table4_Mean_Differences
+plot_engine(model_anova)
 ```
 
-## 4. Case Study 3: Binary Outcomes (Logistic Regression)
-When the outcome is binary (e.g., Success/Failure), the engine calculates Odds Ratios and Classification Accuracy.
+---
+
+# 4. Logistic Regression: Binary Outcomes
+
+When the outcome is binary (e.g., Success/Failure), the engine calculates Odds Ratios, McFadden's and Nagelkerke's Pseudo R², and classification accuracy.
 
 ```{r}
 # Simulating binary data
@@ -67,22 +81,140 @@ set.seed(101)
 n_logit <- 100
 age <- rnorm(n_logit, 40, 10)
 passed <- rbinom(n_logit, 1, plogis(-5 + 0.12 * age))
+
 logit_df <- data.frame(passed, age)
 
 # Run Logit engine
 model_logit <- paper_engine(passed ~ age, data = logit_df, model = "logit")
 
-# View Odds Ratios and Accuracy
-model_logit$tables$Table3_Logit_Estimation
+model_logit$tables$Table2_Logit_Estimation
+model_logit$messages
+plot_engine(model_logit)
 ```
 
-## 5. Visualizing for Publication
-Finally, `OLSengine` provides grayscale, publication-ready plots without the need for extra libraries.
+---
+
+# 5. Panel Data: Fixed and Random Effects
+
+Panel data tracks the same entities over time. The Hausman test automatically selects between Fixed Effects (FE) and Random Effects (RE).
 
 ```{r}
-# Forest plot for our robust OLS model
-plot_engine(model_robust)
+# Simulate panel data: 50 workers observed over 3 years
+set.seed(456)
+n_entities <- 50
+n_time <- 3
+
+panel_df <- data.frame(
+  worker_id = rep(1:n_entities, each = n_time),
+  year = rep(2018:2020, times = n_entities),
+  wage = rnorm(n_entities * n_time, 50, 10) + 
+         rep(rnorm(n_entities, 0, 5), each = n_time), # Entity fixed effect
+  experience = rep(5:7, times = n_entities) + rnorm(n_entities * n_time, 0, 1)
+)
+
+# Hausman test decides between FE and RE
+model_panel <- paper_engine(wage ~ experience, 
+                            data = panel_df,
+                            model = "panel",
+                            entity_id = "worker_id",
+                            time_id = "year",
+                            method = "auto")
+
+model_panel$tables[[1]]
+model_panel$messages
+plot_engine(model_panel)
 ```
 
-## Conclusion
-`OLSengine` simplifies the transition from raw data to paper-ready results, ensuring that every step is backed by a rigorous methodological audit.
+---
+
+# 6. Instrumental Variables: Addressing Endogeneity
+
+When a predictor is correlated with the error term (endogeneity), Instrumental Variables (IV) provide consistent estimates using Two-Stage Least Squares (2SLS).
+
+```{r}
+# Simulate IV data with endogeneity
+set.seed(789)
+n_iv <- 200
+
+z <- rnorm(n_iv, 10, 3)  # Instrument
+u <- rnorm(n_iv, 0, 2)   # Unobserved confounder
+
+x <- 2 + 0.8 * z + u + rnorm(n_iv, sd = 1)  # Endogenous predictor
+y <- 5 + 1.5 * x + u + rnorm(n_iv, sd = 3)  # Outcome
+
+iv_df <- data.frame(y, x, z)
+
+# 2SLS estimation
+model_iv <- paper_engine(y ~ x, 
+                         data = iv_df,
+                         model = "iv",
+                         instruments = ~ z)
+
+model_iv$tables$Table2_IV_2SLS
+model_iv$messages  # Reports first-stage F-stat
+plot_engine(model_iv)
+```
+
+---
+
+# 7. Difference-in-Differences: Causal Policy Evaluation
+
+DiD estimates treatment effects by comparing changes over time between treated and control groups.
+
+```{r}
+# Simulate policy intervention data
+set.seed(321)
+n_per_group <- 100
+
+did_df <- data.frame(
+  outcome = c(rnorm(n_per_group, 50, 10), rnorm(n_per_group, 53, 10),  # Control: pre/post
+              rnorm(n_per_group, 50, 10), rnorm(n_per_group, 58, 10)), # Treated: pre/post
+  group = rep(c("Control", "Treated"), each = n_per_group * 2),
+  period = rep(c("Pre", "Post"), times = n_per_group * 2)
+)
+
+# DiD estimation
+model_did <- paper_engine(outcome ~ 1, 
+                          data = did_df,
+                          model = "did",
+                          treatment_var = "group",
+                          time_var = "period",
+                          treatment_level = "Treated",
+                          post_level = "Post")
+
+model_did$tables$Table2_DiD_Estimation
+model_did$tables$Group_Means
+model_did$messages  # Reports parallel trends test
+plot_engine(model_did)
+```
+
+---
+
+# 8. Real Data Example: Academic Salaries
+
+The package includes a real dataset of 397 U.S. college professors.
+
+```{r}
+data(academic_salaries)
+
+# Explore salary determinants
+salary_model <- paper_engine(salary ~ rank + discipline + years_since_phd + sex,
+                             data = academic_salaries,
+                             model = "ols",
+                             robust = "auto")
+
+salary_model$tables$Table2_OLS_Estimation
+salary_model$messages
+```
+
+---
+
+# Conclusion
+
+`OLSengine` simplifies the transition from raw data to paper-ready results across six estimation methods. Every step is backed by rigorous methodological audits, ensuring researchers can focus on interpretation rather than implementation.
+
+**Key Features:**
+- Zero external dependencies (pure base R)
+- Integrated diagnostics with actionable warnings
+- APA-formatted tables and publication-ready plots
+- Unified interface across OLS, ANOVA, Logit, Panel, IV, and DiD

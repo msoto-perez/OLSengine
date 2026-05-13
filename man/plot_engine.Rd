@@ -18,14 +18,14 @@ plot_engine(model_object, y_label = NULL, x_label = NULL)
 }
 \value{
 A base R plot rendered in the active graphics device. The function
-is called for its side effect (the plot) and returns \code{NULL} invisibly.
+  is called for its side effect (the plot) and returns \code{NULL} invisibly.
 }
 \description{
 Produces minimalist APA-style plots from a \code{basic_model}
-object returned by \code{\link{paper_engine}}. The plot type is selected
-automatically based on the estimation method: a forest plot of coefficients
-with 95\% CI for OLS, a group means plot with 95\% CI error bars for ANOVA,
-and a logistic probability curve for logistic regression.
+  object returned by \code{\link{paper_engine}}. The plot type is selected
+  automatically based on the estimation method: a forest plot of coefficients
+  with 95% CI for OLS, a group means plot with 95% CI error bars for ANOVA,
+  and a logistic probability curve for logistic regression.
 }
 \examples{
 set.seed(42)
