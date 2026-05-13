@@ -757,24 +757,175 @@ iv_engine <- function(formula, data, instruments) {
     aduana_msgs = aduana_msgs
   ))
 }
+# =========================================================
+# 7. DIFFERENCE-IN-DIFFERENCES ENGINE (DiD in Base R)
+# =========================================================
+# Internal function: DiD estimation (not exported)
+did_engine <- function(formula, data, treatment_var, time_var, treatment_level = NULL, post_level = NULL) {
+
+  # Parse formula: y ~ controls (if any)
+  vars_in_model <- all.vars(formula)
+  y_name <- vars_in_model[1]
+  control_vars <- if (length(vars_in_model) > 1) vars_in_model[-1] else NULL
+
+  # Validate treatment and time variables exist
+  if (!treatment_var %in% names(data)) stop("treatment_var not found in data")
+  if (!time_var %in% names(data)) stop("time_var not found in data")
+
+  # Extract variables
+  y <- data[[y_name]]
+  treatment <- as.factor(data[[treatment_var]])
+  time <- as.factor(data[[time_var]])
+
+  # Auto-detect levels if not provided
+  if (is.null(treatment_level)) {
+    treatment_level <- levels(treatment)[2]  # Assume second level is treated
+  }
+  if (is.null(post_level)) {
+    post_level <- levels(time)[2]  # Assume second level is post
+  }
+
+  # Create binary indicators
+  treated <- as.integer(treatment == treatment_level)
+  post <- as.integer(time == post_level)
+  did_interaction <- treated * post
+
+  n <- nrow(data)
+  aduana_msgs <- character(0)
+
+  # Check for balanced design
+  group_counts <- table(treatment, time)
+  is_balanced <- length(unique(as.vector(group_counts))) == 1
+  if (!is_balanced) {
+    aduana_msgs <- c(aduana_msgs, "INFO: Unbalanced design detected. DiD estimates may be sensitive to sample composition.")
+  }
+
+  # ============================================
+  # DiD REGRESSION: Y ~ Treated + Post + (Treated × Post) + Controls
+  # ============================================
+
+  # Build design matrix
+  if (is.null(control_vars)) {
+    X <- cbind(1, treated, post, did_interaction)
+    colnames(X) <- c("(Intercept)", "Treated", "Post", "Treated:Post")
+  } else {
+    X_controls <- as.matrix(data[, control_vars, drop = FALSE])
+    X <- cbind(1, treated, post, did_interaction, X_controls)
+    colnames(X) <- c("(Intercept)", "Treated", "Post", "Treated:Post", control_vars)
+  }
+
+  # OLS estimation
+  XX_inv <- solve(crossprod(X))
+  beta_did <- as.vector(XX_inv %*% crossprod(X, y))
+  names(beta_did) <- colnames(X)
+
+  # Residuals and variance
+  resid_did <- y - as.vector(X %*% beta_did)
+  k <- ncol(X)
+  df_residual <- n - k
+  sigma2 <- sum(resid_did^2) / df_residual
+  vcov_did <- sigma2 * XX_inv
+  se_did <- sqrt(diag(vcov_did))
+
+  # DiD coefficient is the interaction term
+  did_coef <- beta_did["Treated:Post"]
+  did_se <- se_did["Treated:Post"]
+  did_t <- did_coef / did_se
+  did_p <- 2 * pt(-abs(did_t), df = df_residual)
+
+  # R²
+  tss <- sum((y - mean(y))^2)
+  rss <- sum(resid_did^2)
+  r2_did <- 1 - (rss / tss)
+
+  # ============================================
+  # PARALLEL TRENDS TEST (Pre-period placebo test)
+  # ============================================
+
+  # For parallel trends, we need pre-period data with multiple time points
+  # Simplified version: check if pre-period means differ between groups
+  pre_data <- data[time != post_level, ]
+
+  if (nrow(pre_data) > 0) {
+    y_pre_treated <- pre_data[pre_data[[treatment_var]] == treatment_level, y_name]
+    y_pre_control <- pre_data[pre_data[[treatment_var]] != treatment_level, y_name]
+
+    if (length(y_pre_treated) > 1 && length(y_pre_control) > 1) {
+      # T-test for pre-period difference
+      pre_test <- t.test(y_pre_treated, y_pre_control)
+      pre_diff_p <- pre_test$p.value
+
+      if (pre_diff_p < 0.05) {
+        aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Parallel Trends): Significant pre-treatment difference detected (p = %.3f). The parallel trends assumption may be violated. Consider including covariates or using alternative identification strategies (Roth et al., 2023).", pre_diff_p))
+      } else {
+        aduana_msgs <- c(aduana_msgs, sprintf("INFO: No significant pre-treatment difference (p = %.3f). Parallel trends assumption is plausible but should be verified with visual inspection of trends.", pre_diff_p))
+      }
+    } else {
+      aduana_msgs <- c(aduana_msgs, "INFO: Insufficient pre-period data for formal parallel trends test. Interpret with caution.")
+    }
+  } else {
+    aduana_msgs <- c(aduana_msgs, "INFO: No pre-period data available. Parallel trends assumption cannot be tested. Interpret DiD estimate as a conditional difference.")
+  }
+
+  # ============================================
+  # GROUP MEANS FOR VISUALIZATION
+  # ============================================
+
+  # Calculate means for each group × time combination
+  mean_treated_pre <- mean(y[treated == 1 & post == 0], na.rm = TRUE)
+  mean_treated_post <- mean(y[treated == 1 & post == 1], na.rm = TRUE)
+  mean_control_pre <- mean(y[treated == 0 & post == 0], na.rm = TRUE)
+  mean_control_post <- mean(y[treated == 0 & post == 1], na.rm = TRUE)
+
+  group_means <- data.frame(
+    Group = rep(c("Control", "Treated"), each = 2),
+    Time = rep(c("Pre", "Post"), times = 2),
+    Mean = c(mean_control_pre, mean_control_post, mean_treated_pre, mean_treated_post)
+  )
+
+  # ============================================
+  # RETURN RESULTS
+  # ============================================
+
+  return(list(
+    coefficients = beta_did,
+    se = se_did,
+    did_estimate = did_coef,
+    did_se = did_se,
+    did_t = did_t,
+    did_p = did_p,
+    r2 = r2_did,
+    n_obs = n,
+    df_residual = df_residual,
+    group_means = group_means,
+    diagnostics = list(
+      r2 = r2_did,
+      n = n,
+      did_estimate = did_coef,
+      did_p = did_p
+    ),
+    aduana_msgs = aduana_msgs
+  ))
+}
 
 # =========================================================
-# 7. WRAPPER FUNCTION (Paper Engine & Customs router)
+# 8. WRAPPER FUNCTION (Paper Engine & Customs router)
 # =========================================================
 
 #' Transparent and Assisted Linear Modeling Engine
 #'
 #' @description Estimates OLS regression, ANOVA/t-tests, binary logistic
-#'   regression, or panel data models using pure base R matrix algebra.
-#'   Automatically audits statistical assumptions through an integrated
-#'   methodological customs layer and returns publication-ready APA-formatted
-#'   tables. Designed for applied researchers and early-career academics who
-#'   need a single, transparent workflow from estimation to reporting.
+#'   regression, panel data models, instrumental variables, or difference-in-differences
+#'   using pure base R matrix algebra. Automatically audits statistical assumptions
+#'   through an integrated methodological customs layer and returns publication-ready
+#'   APA-formatted tables. Designed for applied researchers and early-career academics
+#'   who need a single, transparent workflow from estimation to reporting.
 #'
 #' @param formula A \code{formula} object specifying the model (e.g., \code{y ~ x1 + x2}).
 #' @param data A data frame containing all variables referenced in \code{formula}.
 #' @param model A character string indicating the estimation engine.
-#'   One of \code{"ols"} (default), \code{"anova"}, \code{"logit"}, \code{"panel"}, or \code{"iv"}.
+#'   One of \code{"ols"} (default), \code{"anova"}, \code{"logit"}, \code{"panel"},
+#'   \code{"iv"}, or \code{"did"}.
 #' @param robust Logical or \code{"auto"}. Controls heteroskedasticity-robust
 #'   standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
 #'   applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
@@ -796,6 +947,14 @@ iv_engine <- function(formula, data, instruments) {
 #'   (e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}. Instruments must
 #'   satisfy relevance (correlated with endogenous X) and exogeneity (uncorrelated
 #'   with error term).
+#' @param treatment_var Character string. Name of the treatment group variable for
+#'   DiD models. Required when \code{model = "did"}.
+#' @param time_var Character string. Name of the time period variable (pre/post) for
+#'   DiD models. Required when \code{model = "did"}.
+#' @param treatment_level Character string. Which level of \code{treatment_var}
+#'   represents the treated group. If \code{NULL}, the second level is used.
+#' @param post_level Character string. Which level of \code{time_var} represents
+#'   the post-treatment period. If \code{NULL}, the second level is used.
 #' @param digits Integer. Number of decimal places in output tables.
 #'   Default is \code{2}.
 #'
@@ -804,7 +963,8 @@ iv_engine <- function(formula, data, instruments) {
 #'     \item{tables}{A list of formatted data frames with estimation results.}
 #'     \item{diagnostics}{A list of raw diagnostic statistics (p-values, fit indices).}
 #'     \item{messages}{A character vector of methodological guidance messages from the customs layer.}
-#'     \item{method}{A character string indicating the engine used (\code{"ols"}, \code{"anova"}, \code{"logit"}, \code{"panel"}, or \code{"iv"}).}
+#'     \item{method}{A character string indicating the engine used (\code{"ols"},
+#'       \code{"anova"}, \code{"logit"}, \code{"panel"}, \code{"iv"}, or \code{"did"}).}
 #'     \item{data}{The cleaned data frame used for estimation (after listwise deletion).}
 #'   }
 #'
@@ -832,9 +992,11 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
                          non_parametric = FALSE, paired = FALSE,
                          entity_id = NULL, time_id = NULL, method = "auto",
                          instruments = NULL,
+                         treatment_var = NULL, time_var = NULL,
+                         treatment_level = NULL, post_level = NULL,
                          digits = 2) {
 
-  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit", "panel", "iv"))
+  model <- match.arg(tolower(model), choices = c("ols", "anova", "logit", "panel", "iv", "did"))
 
   # Validate panel data parameters
   if (model == "panel") {
@@ -850,7 +1012,14 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     }
   }
 
-  # Pass extra variables for panel data and IV
+  # Validate DiD parameters
+  if (model == "did") {
+    if (is.null(treatment_var) || is.null(time_var)) {
+      stop("Difference-in-differences models require both 'treatment_var' and 'time_var' parameters.")
+    }
+  }
+
+  # Pass extra variables for panel data, IV, and DiD
   extra_vars <- NULL
   if (model == "panel") {
     extra_vars <- c(entity_id, time_id)
@@ -861,6 +1030,8 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     } else {
       extra_vars <- instruments
     }
+  } else if (model == "did") {
+    extra_vars <- c(treatment_var, time_var)
   }
 
   filter_res <- pre_estimation_filter(formula, data, extra_vars = extra_vars)
@@ -1054,6 +1225,38 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
     }
   }
 
+  # --- DIFFERENCE-IN-DIFFERENCES BRANCH ---
+  else if (model == "did") {
+    raw <- did_engine(formula, clean_data, treatment_var = treatment_var, time_var = time_var,
+                      treatment_level = treatment_level, post_level = post_level)
+    aduana_messages <- c(aduana_messages, raw$aduana_msgs)
+
+    coefs <- raw$coefficients
+    se <- raw$se
+    t_stats <- coefs / se
+    p_vals <- 2 * pt(abs(t_stats), df = raw$df_residual, lower.tail = FALSE)
+    p_formatted <- ifelse(p_vals < 0.001, "< .001", sprintf(paste0("%.", digits, "f"), p_vals))
+
+    t_crit <- qt(0.975, df = raw$df_residual)
+
+    out_table <- data.frame(
+      Predictor = names(coefs),
+      B = round(coefs, digits),
+      SE = round(se, digits),
+      t = round(t_stats, digits),
+      p = p_formatted,
+      CI_95_Low = round(coefs - t_crit * se, digits),
+      CI_95_High = round(coefs + t_crit * se, digits)
+    )
+
+    table_name <- "Table2_DiD_Estimation"
+
+    # DiD-specific diagnostics
+    aduana_messages <- c(aduana_messages, sprintf("INFO: DiD Effect (Treated:Post interaction) = %.3f (SE = %.3f, p %s)", raw$did_estimate, raw$did_se, p_formatted[names(coefs) == "Treated:Post"]))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: Sample size N = %d", raw$n_obs))
+    aduana_messages <- c(aduana_messages, sprintf("INFO: R² = %.3f", raw$r2))
+  }
+
   # --- WRAP-UP ---
   if(length(aduana_messages) == 0) {
     aduana_messages <- "Success: The model meets all diagnosed assumptions and there was no severe data loss."
@@ -1062,6 +1265,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
   tables_list <- list()
   tables_list[[table_name]] <- out_table
   if(model == "anova") tables_list$Descriptive_Means <- means_table
+  if(model == "did") tables_list$Group_Means <- raw$group_means
 
   final_model <- list(
     tables = tables_list,
@@ -1076,7 +1280,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
 }
 
 # =========================================================
-# 8. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
+# 9. VISUALIZATION ENGINE (Paper-Ready Plots in Base R)
 # =========================================================
 
 #' Generate Publication-Ready Plots for Basic Models
