@@ -4,7 +4,7 @@ author: "msoto-perez"
 date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{OLSengine Tutorial}
+  %\VignetteIndexEntry{OLSengine: Assisted Simplicity Tutorial}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
