@@ -2,3 +2,5 @@
 ^\.Rproj\.user$
 ^LICENSE\.md$
 ^validation_scripts$
+^\.claude$
+^cran-comments\.md$

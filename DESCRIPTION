@@ -1,11 +1,11 @@
 Package: OLSengine
 Type: Package
-Title: Transparent Linear and Causal Inference Models for Social Sciences
+Title: Transparent and Assisted Linear Modeling Engine
 Version: 1.1.0
 Authors@R: 
     person("Manuel", "Soto-Pérez", , "manuel.sotop@gmail.com", 
            role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0002-8249-7410"))
+           comment = c(ORCID = "0000-0002-2298-2047"))
 Description: Unified estimation, diagnostics, and reporting for ordinary least 
     squares (OLS) regression, ANOVA/t-tests, logistic regression, panel data 
     (fixed/random effects with Hausman test), instrumental variables (2SLS with 
