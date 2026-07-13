@@ -52,7 +52,7 @@
 #' @references
 #' Fox, J., & Weisberg, S. (2011). \emph{An R Companion to Applied Regression}
 #' (2nd ed.). Thousand Oaks, CA: Sage.
-#' \url{https://socialsciences.mcmaster.ca/jfox/Books/Companion/}
+#' \url{https://www.john-fox.ca/Companion/}
 #'
 #' Fox, J., & Weisberg, S. (2019). \emph{carData: Companion to Applied Regression
 #' Data Sets}. R package version 3.0-3.
