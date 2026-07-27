@@ -4,3 +4,4 @@
 ^validation_scripts$
 ^\.claude$
 ^cran-comments\.md$
+^harness$
