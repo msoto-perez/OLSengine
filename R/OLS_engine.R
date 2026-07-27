@@ -179,7 +179,14 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
 
   # 1. DIAGNOSTICS: Normality and Homogeneity
   fit_aov <- aov(formula, data = data)
-  norm_p <- shapiro.test(residuals(fit_aov))$p.value
+  resid_aov <- residuals(fit_aov)
+  if (n_total <= 5000) {
+    norm_p <- shapiro.test(resid_aov)$p.value
+    norm_method <- "Shapiro-Wilk"
+  } else {
+    norm_p <- ks.test(scale(resid_aov), "pnorm")$p.value
+    norm_method <- "Kolmogorov-Smirnov"
+  }
 
   # Levene's Test (Median-based, robust)
   medians <- tapply(y_val, group_val, median, na.rm = TRUE)
@@ -194,7 +201,7 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
   if (identical(non_parametric, "auto")) {
     if (norm_p < 0.05) {
       use_np <- TRUE
-      aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Severe non-normality detected (Shapiro p < .05). Transitioned automatically to Non-Parametric tests to protect validity.")
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Severe non-normality detected (%s p < .05). Transitioned automatically to Non-Parametric tests to protect validity.", norm_method))
     } else {
       aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Normality assumption met. Parametric tests were used.")
     }
@@ -204,9 +211,9 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
   } else {
     # Default (FALSE)
     if (norm_p < 0.05) {
-      aduana_msgs <- c(aduana_msgs, "CRITICAL WARNING: Non-normal distribution detected (Shapiro p < .05). Parametric results might be biased. Consider using 'non_parametric = TRUE' or 'non_parametric = \"auto\"'.")
+      aduana_msgs <- c(aduana_msgs, sprintf("CRITICAL WARNING: Non-normal distribution detected (%s p < .05). Parametric results might be biased. Consider using 'non_parametric = TRUE' or 'non_parametric = \"auto\"'.", norm_method))
     } else {
-      aduana_msgs <- c(aduana_msgs, "Customs: Normality assumption of residuals is met (Shapiro p > .05).")
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs: Normality assumption of residuals is met (%s p > .05).", norm_method))
     }
   }
 
@@ -285,7 +292,7 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
 
   list(
     effects_table = effects_table,
-    diagnostics = list(n = n_total, levene_p_value = levene_p, norm_p_value = norm_p),
+    diagnostics = list(n = n_total, levene_p_value = levene_p, norm_p_value = norm_p, norm_method = norm_method),
     aduana_msgs = aduana_msgs
   )
 }
@@ -685,8 +692,10 @@ iv_engine <- function(formula, data, instruments) {
 
   # Standard errors (need to account for first stage uncertainty)
   # Use Z as instrument matrix for variance
-  PZ <- Z_int %*% solve(crossprod(Z_int)) %*% t(Z_int)
-  X_tilde <- PZ %*% X_int
+  # X_tilde = PZ %*% X_int, computed via associativity to avoid forming the
+  # full n x n projection matrix PZ (O(n^2) memory/time -> O(n*k))
+  ZZ_inv_proj <- solve(crossprod(Z_int))
+  X_tilde <- Z_int %*% (ZZ_inv_proj %*% crossprod(Z_int, X_int))
   vcov_2sls <- sigma2_2sls * solve(crossprod(X_tilde))
   se_2sls <- sqrt(diag(vcov_2sls))
 
