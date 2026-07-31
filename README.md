@@ -141,8 +141,8 @@ All engines have been validated against standard R packages (`lm`, `aov`, `glm`,
 To cite OLSengine in publications:
 
 ```
-Soto-Pérez, M. (2025). OLSengine: Transparent linear and causal inference 
-models for social sciences (v1.1.0). R package. 
+Soto-Pérez, M. (2026). OLSengine: A transparent and assisted econometric 
+modelling engine in base R (v1.1.1). R package. 
 https://github.com/msoto-perez/OLSengine
 ```
 

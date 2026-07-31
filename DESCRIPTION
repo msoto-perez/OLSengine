@@ -1,7 +1,7 @@
 Package: OLSengine
 Type: Package
 Title: Transparent and Assisted Linear Modeling Engine
-Version: 1.1.0
+Version: 1.1.1
 Authors@R: 
     person("Manuel", "Soto-Pérez", , "msoto@up.edu.mx",
            role = c("aut", "cre"),

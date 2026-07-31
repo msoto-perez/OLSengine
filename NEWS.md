@@ -1,3 +1,28 @@
+# OLSengine 1.1.1
+
+## Bug fixes
+
+* `iv_engine()`: fixed an O(n^2) memory/time bug caused by explicitly forming
+  the full n x n projection matrix when computing the second-stage variance.
+  The offending step now computes `X_tilde` via associativity instead, giving
+  O(n*k) memory. Previously this failed with "cannot allocate vector" errors
+  around n = 100,000; it now runs in a fraction of a second at that size.
+* `anova_engine()`: fixed a hard crash for n > 5,000, where `shapiro.test()`
+  errors out ("sample size must be between 3 and 5000"). It now falls back to
+  a Kolmogorov-Smirnov test above that threshold, matching the behavior
+  `ols_engine()` already had.
+* `panel_engine()`: fixed the internal Hausman test statistic, which did not
+  match `plm::phtest()`. The between estimator used to construct the GLS
+  transformation parameter (`theta`) was missing its intercept and was not
+  isolating the idiosyncratic variance component, and the covariance-matrix
+  positive-definiteness safeguard did not match the reference algorithm used
+  by `plm::phtest()` (which inverts directly and takes the absolute value of
+  the resulting statistic, without a positive-definiteness check). In some
+  scenarios this could select the theoretically inconsistent estimator
+  (Random Effects when Fixed Effects was actually warranted). See the
+  "Statistical correctness note" in this release's `cran-comments.md` for
+  scope and mitigation.
+
 # OLSengine 1.1.0
 
 ## New features
