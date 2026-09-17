@@ -8,9 +8,9 @@ Built under the philosophy of **"Assisted Simplicity"**, OLSengine acts as a met
 
 * **Six Estimation Engines:** OLS regression, ANOVA/t-tests, logistic regression, panel data (FE/RE), instrumental variables (2SLS), and difference-in-differences (DiD).
 * **Zero External Dependencies:** Built entirely on pure Base R matrix algebra and native stats functions for maximum long-term stability and algorithmic transparency.
-* **The Methodological Customs (Aduana):** Automatically runs background diagnostics (Breusch-Pagan, Shapiro-Wilk, Levene, VIF, Hosmer-Lemeshow, Hausman, weak instruments, parallel trends) and outputs actionable, literature-backed warnings.
+* **The Methodological Customs (Aduana):** Automatically runs background diagnostics (Breusch-Pagan, Shapiro-Wilk, Levene, VIF, Hosmer-Lemeshow, Hausman, weak instruments, pre-treatment balance) and outputs actionable, literature-backed warnings.
 * **Paper-Ready Outputs:** Returns hierarchical tables formatted for direct inclusion in academic manuscripts (APA style), automatically calculating effect sizes and exact p-values.
-* **Publication-Ready Plots:** Generates APA-style, grayscale plots (forest plots, group means, logistic curves, panel trends, DiD parallel trends) without requiring `ggplot2`.
+* **Publication-Ready Plots:** Generates APA-style, grayscale plots (forest plots, group means, logistic curves, panel trends, DiD pre-treatment balance) without requiring `ggplot2`.
 
 ## 📦 Installation
 
@@ -103,7 +103,7 @@ plot_engine(model_iv)
 
 ### 6. Difference-in-Differences
 
-Tests parallel trends assumption and visualizes treatment effects.
+Checks pre-treatment balance between groups and visualizes treatment effects.
 
 ```r
 model_did <- paper_engine(outcome ~ 1, 
@@ -114,7 +114,7 @@ model_did <- paper_engine(outcome ~ 1,
                           treatment_level = "Treated",
                           post_level = "Post")
 
-# Plot shows parallel trends and treatment effect
+# Plot shows pre/post levels, the counterfactual, and the treatment effect
 plot_engine(model_did)
 ```
 

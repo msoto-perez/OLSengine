@@ -870,12 +870,12 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
       pre_diff_p <- pre_test$p.value
 
       if (pre_diff_p < 0.05) {
-        aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Parallel Trends): Significant pre-treatment difference detected (p = %.3f). The parallel trends assumption may be violated. Consider including covariates or using alternative identification strategies (Roth et al., 2023).", pre_diff_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Pre-Treatment Balance): Treated and control groups differ significantly in pre-treatment levels (p = %.3f). This is a pre-treatment balance check, not a test of parallel trends. Consider including covariates or using alternative identification strategies (Roth et al., 2023).", pre_diff_p))
       } else {
-        aduana_msgs <- c(aduana_msgs, sprintf("INFO: No significant pre-treatment difference (p = %.3f). Parallel trends assumption is plausible but should be verified with visual inspection of trends.", pre_diff_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("INFO: No significant pre-treatment difference in levels detected (p = %.3f). This does not confirm parallel trends, which requires observing group trajectories across multiple pre-treatment periods.", pre_diff_p))
       }
     } else {
-      aduana_msgs <- c(aduana_msgs, "INFO: Insufficient pre-period data for formal parallel trends test. Interpret with caution.")
+      aduana_msgs <- c(aduana_msgs, "INFO: Insufficient pre-period data for a multi-period parallel-trends evaluation; only a single-period balance check was performed.")
     }
   } else {
     aduana_msgs <- c(aduana_msgs, "INFO: No pre-period data available. Parallel trends assumption cannot be tested. Interpret DiD estimate as a conditional difference.")
@@ -1548,7 +1548,7 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
   }
 
   # =======================================================
-  # 6. DIFFERENCE-IN-DIFFERENCES PLOT: Parallel Trends
+  # 6. DIFFERENCE-IN-DIFFERENCES PLOT: Pre-Treatment Balance
   # =======================================================
   else if (method == "did") {
     # Get group means data
@@ -1591,7 +1591,8 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
     points(x_pos, treated_data$Mean, pch = 21, cex = 2, bg = "white", col = "black")
 
     # Add counterfactual line (dashed) - what treated would have been without treatment
-    # Parallel trend assumption: treated would have increased by same amount as control
+    # Assumes treated would have changed by the same amount as control (the DiD
+    # identifying assumption); this plot compares only pre/post levels, not trends
     control_change <- control_data$Mean[2] - control_data$Mean[1]
     counterfactual_post <- treated_data$Mean[1] + control_change
 

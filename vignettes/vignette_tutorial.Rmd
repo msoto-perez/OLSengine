@@ -184,7 +184,7 @@ model_did <- paper_engine(outcome ~ 1,
 
 model_did$tables$Table2_DiD_Estimation
 model_did$tables$Group_Means
-model_did$messages  # Reports parallel trends test
+model_did$messages  # Reports pre-treatment balance check
 plot_engine(model_did)
 ```
 
