@@ -1,54 +1,60 @@
 ## Submission summary
 
-This is a bug-fix patch release (1.1.0 -> 1.1.1) of a package already on CRAN.
-No new features, no exported function signatures added, removed, or changed.
-No new package dependencies.
+This is a minor release (1.1.1 -> 1.2.0) of a package already on CRAN. No
+backwards-incompatible changes: no exported function signatures added,
+removed, or changed, and no new package dependencies.
 
-Three bugs are fixed, all internal to estimation engines reached through the
+Two changes, both in internal estimation-engine logic reached through the
 existing `paper_engine()` entry point:
 
-* `iv_engine()`: an O(n^2) memory/time bug from materializing a full n x n
-  projection matrix. Previously failed with "cannot allocate vector" errors
-  around n = 100,000; the fix computes the same quantity via associativity,
-  in O(n*k) memory, with numerically identical output.
-* `anova_engine()`: a hard crash for n > 5,000 (`shapiro.test()`'s sample-size
-  limit). Now falls back to a Kolmogorov-Smirnov test above that threshold,
-  matching the pattern already used by `ols_engine()`.
-* `panel_engine()`: an incorrect Hausman test statistic (did not match
-  `plm::phtest()`), caused by an error in the random-effects GLS
-  transformation parameter and a covariance-matrix safeguard that diverged
-  from the reference algorithm. See the note below.
+* `did_engine()`: relabels the pre-treatment placebo check. It compares
+  treated/control group levels in a single pre-treatment period, which
+  tests for pre-existing imbalance, not parallel trends (parallel trends
+  requires observing group trajectories across multiple pre-treatment
+  periods). This was raised in a journal peer review of the package
+  description paper. The underlying statistical test is unchanged -- same
+  t-test of pre-treatment levels -- only the WARNING/INFO message wording,
+  plot labels, and documentation were corrected to avoid overclaiming.
+* `anova_engine()`: new decision logic for the `non_parametric = "auto"`
+  path. Previously, whenever Shapiro-Wilk rejected normality, the function
+  always fell back to Kruskal-Wallis. It now also consults Levene's test
+  (Brown-Forsythe) before deciding: clear heteroscedasticity (Levene
+  p < .01) routes to Welch's ANOVA instead, since heteroscedasticity-driven
+  apparent non-normality is better addressed by a variance-robust test than
+  a rank-based one; ambiguous cases (.01-.10) keep the previous
+  Kruskal-Wallis default but flag the ambiguity explicitly in the message;
+  clearly homogeneous variance (p > .10) behaves exactly as before. This
+  was validated with a 2x2 Monte Carlo design (normality x variance
+  homogeneity) and a targeted 2,000-replicate refinement of the
+  heteroscedastic/non-normal cell: Welch's ANOVA Type-I error rate is 7.11%
+  (95% CI [6.04%, 8.34%]) under combined skew and heteroscedasticity,
+  within the pre-specified 7.5% tolerance for that design. Reproducible
+  validation scripts are included under `harness/` (excluded from the
+  built package via `.Rbuildignore`).
 
 Full details in NEWS.md.
 
-## Statistical correctness note (panel_engine Hausman fix)
-
-I want to be explicit about this rather than downplay it: the `panel_engine()`
-fix is not purely cosmetic. Before the fix, `panel_engine(..., method =
-"auto")` could select Random Effects in cases where the correctly-computed
-Hausman test rejects it in favor of Fixed Effects -- i.e., it could recommend
-the theoretically inconsistent estimator. This was confirmed on a real
-dataset (Fatalities, Stock & Watson): the buggy statistic gave chi-sq = 3.28,
-p = 0.070 (fails to reject, selects RE), while the corrected statistic gives
-chi-sq = 18.35, p = 1.8e-05, matching `plm::phtest()` exactly and correctly
-selecting FE.
-
-Anyone who used `panel_engine()`/`paper_engine(model = "panel", method =
-"auto")` under v1.1.0 should be aware that the automatic FE/RE selection may
-have been wrong for their data and should re-run their analysis under this
-version. Results from explicit `method = "fe"` or `method = "re"` calls are
-unaffected, since the fix only touches the Hausman test statistic and the
-automatic-selection logic that depends on it, not the FE or RE coefficient
-estimation itself.
-
 ## Test environments
 
-* Local Windows 11, R 4.5.2 (x86_64-w64-mingw32), `R CMD check --as-cran` via
-  `devtools::check()`.
+* Local Windows 11, R 4.5.2 (x86_64-w64-mingw32), `R CMD check --as-cran`
+  run directly on the built source tarball (`OLSengine_1.2.0.tar.gz`), not
+  just `devtools::check()` on the source tree.
 
 ## R CMD check results
 
-0 errors | 0 warnings | 0 notes
+0 errors | 0 warnings | 1 note
+
+* `checking for future file timestamps ... NOTE` / `unable to verify
+  current time`. This package's working copy lives in a Dropbox-synced
+  folder; I verified with `Get-ChildItem` that no file in the source tree
+  has a modification timestamp later than the current system clock, so
+  this is not a stale or mis-dated file in the package. The check step
+  itself reports it was unable to verify the current time against an
+  external reference, which points to a local network/clock-verification
+  hiccup in this environment rather than an issue with the package
+  contents. This is a known class of false positive for packages developed
+  in cloud-synced folders and is not expected to reproduce on CRAN's own
+  build servers.
 
 ## Downstream dependencies
 
