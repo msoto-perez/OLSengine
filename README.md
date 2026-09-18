@@ -142,7 +142,7 @@ To cite OLSengine in publications:
 
 ```
 Soto-Pérez, M. (2026). OLSengine: A transparent and assisted econometric 
-modelling engine in base R (v1.1.1). R package. 
+modelling engine in base R (v1.2.0). R package. 
 https://github.com/msoto-perez/OLSengine
 ```
 
