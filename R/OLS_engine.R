@@ -3,7 +3,7 @@
 # Stage 3: Functional Prototype (English Version)
 #################################################
 
-#' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test ks.test lm median model.matrix na.omit pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test wilcox.test
+#' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test ks.test lm median model.matrix na.omit oneway.test pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test wilcox.test
 #' @importFrom graphics abline arrows axis box lines par points text plot legend
 NULL
 
@@ -196,12 +196,25 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
 
   # 2. CUSTOMS DECISION LOGIC (The 3 paths)
   use_np <- FALSE
+  use_welch <- FALSE
   aduana_msgs <- character(0)
 
   if (identical(non_parametric, "auto")) {
     if (norm_p < 0.05) {
-      use_np <- TRUE
-      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Severe non-normality detected (%s p < .05). Transitioned automatically to Non-Parametric tests to protect validity.", norm_method))
+      if (levene_p < 0.01) {
+        # Non-normality co-occurs with clear variance heterogeneity: the
+        # residual non-normality may itself be an artifact of unequal
+        # variances rather than genuine skew, so prefer Welch's ANOVA
+        # over a non-parametric test.
+        use_welch <- TRUE
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05, but Levene's test also indicates unequal variances (p = %.3f). This pattern suggests the non-normality result may be driven by heteroscedasticity rather than genuine skew. Switched to Welch's ANOVA instead of a non-parametric test.", norm_method, levene_p))
+      } else if (levene_p <= 0.10) {
+        use_np <- TRUE
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05. Levene's test was inconclusive on variance homogeneity (p = %.3f). Defaulting to Non-Parametric tests; manual inspection of group variances is recommended.", norm_method, levene_p))
+      } else {
+        use_np <- TRUE
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Severe non-normality detected (%s p < .05) with homogeneous variances confirmed (Levene p = %.3f). Transitioned automatically to Non-Parametric tests to protect validity.", norm_method, levene_p))
+      }
     } else {
       aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Normality assumption met. Parametric tests were used.")
     }
@@ -250,7 +263,19 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
       eff_val <- abs(stat_val) / sqrt(n_total / 2)
     }
   } else {
-    if (use_np) {
+    if (use_welch) {
+      # Variant 1b: Independent Parametric, unequal variances (Welch's ANOVA)
+      test_res <- oneway.test(formula, data = data, var.equal = FALSE)
+      test_name <- "Welch's ANOVA"
+      stat_name <- "F"
+      stat_val <- test_res$statistic
+      p_val <- test_res$p.value
+      df_val <- test_res$parameter[1]
+      eff_name <- "Partial Eta-sq"
+      eff_val <- NA_real_
+
+      aduana_msgs <- c(aduana_msgs, "Note: Partial Eta-sq is not reported for Welch's ANOVA. The conventional sum-of-squares-based formula is inappropriate under heteroscedasticity, and no validated closed-form alternative is implemented in this version.")
+    } else if (use_np) {
       # Variant 2: Independent Non-Parametric (Kruskal/Mann-Whitney)
       test_res <- kruskal.test(formula, data = data)
       test_name <- ifelse(k_groups == 2, "Mann-Whitney U (via Kruskal)", "Kruskal-Wallis")
