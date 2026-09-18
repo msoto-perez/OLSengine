@@ -1,3 +1,21 @@
+# OLSengine 1.2.0
+
+## Bug fixes / corrections
+* did_engine(): the pre-treatment placebo check is now correctly labelled 
+  as a pre-treatment balance check rather than a parallel-trends test. 
+  A single pre-treatment period cannot establish parallel trends, which 
+  requires observing group trajectories across multiple periods. No 
+  change to the underlying statistical test.
+
+## New features
+* anova_engine(): when non_parametric = "auto" and Shapiro-Wilk rejects 
+  normality, Levene's test (Brown-Forsythe) now informs the correction: 
+  clear heteroscedasticity (p < .01) routes to Welch's ANOVA instead of 
+  Kruskal-Wallis; ambiguous cases (.01-.10) retain the previous default 
+  with an explicit warning; homogeneous variance (p > .10) confirms 
+  genuine non-normality as before. Validated via Monte Carlo simulation 
+  (see harness/ for reproducible scripts).
+
 # OLSengine 1.1.1
 
 ## Bug fixes
