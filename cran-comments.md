@@ -51,6 +51,8 @@ Full details in NEWS.md (entry 1.2.1).
 
 * Local Windows 11, R 4.5.2 (x86_64-w64-mingw32): `R CMD build`, then
   `R CMD check --as-cran` run on the built tarball (`OLSengine_1.2.1.tar.gz`).
+* win-builder, R Under development (unstable) (2026-10-10 r90659 ucrt):
+  Status: OK.
 
 ## R CMD check results
 
