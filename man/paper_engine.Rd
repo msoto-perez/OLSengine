@@ -36,13 +36,25 @@ standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
 applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
 test detects heteroskedasticity (p < .05). Default is \code{FALSE}.}
 
-\item{non_parametric}{Logical or \code{"auto"}. Controls non-parametric
-fallback for ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis or
-Wilcoxon tests are used. If \code{"auto"}, transition occurs when
-Shapiro-Wilk detects non-normality (p < .05). Default is \code{FALSE}.}
+\item{non_parametric}{Logical or \code{"auto"}. Controls the test used for
+ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis (independent groups) or
+Wilcoxon signed-rank (paired) tests are used. If \code{"auto"}, normality of
+the pooled ANOVA residuals is tested first (Shapiro-Wilk for N <= 5000; a
+Lilliefors-corrected Kolmogorov-Smirnov test with the Dallal-Wilkinson
+p-value approximation for larger N). If normality is not rejected
+(p >= .05), the classical one-way ANOVA is used. If it is rejected, paired
+designs use the Wilcoxon signed-rank test, and independent-groups designs
+are routed by Levene's test (Brown-Forsythe, median-centered): p <= .10
+uses Welch's ANOVA, p > .10 uses Kruskal-Wallis. A non-significant Levene
+test is treated as insufficient evidence of unequal variances, not as
+confirmation of equal variances. Default is \code{FALSE}.}
 
 \item{paired}{Logical. If \code{TRUE}, assumes paired/dependent samples
-for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.}
+for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.
+Known limitation: in paired designs the normality check (and therefore the
+\code{non_parametric = "auto"} decision) uses the residuals of the
+between-group one-way model, not the paired differences that the paired
+t-test actually assumes to be normal.}
 
 \item{entity_id}{Character string. Name of the entity/individual identifier
 variable for panel data models. Required when \code{model = "panel"}.}
@@ -54,10 +66,18 @@ for panel data models. Required when \code{model = "panel"}.}
 uses Hausman test to select between FE and RE), \code{"fe"} (Fixed Effects),
 or \code{"re"} (Random Effects). Only used when \code{model = "panel"}.}
 
-\item{instruments}{A \code{formula} specifying instrumental variables for IV models
-(e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}. Instruments must
-satisfy relevance (correlated with endogenous X) and exogeneity (uncorrelated
-with error term).}
+\item{instruments}{A \code{formula} specifying the excluded instruments for IV
+models (e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}.
+Instruments must satisfy relevance (correlated with the endogenous
+regressors) and exogeneity (uncorrelated with the error term). The IV engine
+treats every right-hand-side variable in \code{formula} as endogenous and
+does not support included exogenous control variables; the intercept is the
+only exogenous regressor. Weak-instrument diagnostics use the conventional
+(homoskedastic) first-stage F with the rule-of-thumb threshold of 10
+(Staiger & Stock, 1997); with more than one endogenous regressor the
+minimum of the per-regressor first-stage F statistics is reported, which is
+not a valid joint weak-identification test. The Sargan overidentification
+test also assumes homoskedastic errors.}
 
 \item{treatment_var}{Character string. Name of the treatment group variable for
 DiD models. Required when \code{model = "did"}.}

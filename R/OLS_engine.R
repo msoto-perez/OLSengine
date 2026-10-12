@@ -3,9 +3,62 @@
 # Stage 3: Functional Prototype (English Version)
 #################################################
 
-#' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test ks.test lm median model.matrix na.omit oneway.test pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test wilcox.test
+#' @importFrom stats aggregate aov binomial coef cor fitted glm hatvalues kruskal.test lm median model.matrix na.omit oneway.test pchisq pf pnorm pt qnorm qt quantile residuals sd setNames shapiro.test t.test var wilcox.test
 #' @importFrom graphics abline arrows axis box lines par points text plot legend
 NULL
+
+# =========================================================
+# 0. NORMALITY HELPERS (internal, large samples)
+# =========================================================
+
+# Lilliefors-corrected Kolmogorov-Smirnov test of normality, for the case where
+# the mean and variance are estimated from the same data (which makes the
+# standard KS p-value invalid). The statistic is the usual two-sided KS
+# distance between the empirical CDF of the standardized data and the
+# standard normal CDF. The p-value is the analytic approximation published by
+# Dallal & Wilkinson (1986, The American Statistician, 40(4), 294-296):
+#   p = exp(-7.01256 D^2 (n + 2.78019) + 2.99587 D sqrt(n + 2.78019)
+#           - 0.122119 + 0.974598 / sqrt(n) + 1.67997 / n),
+# where, for n > 100, D is replaced by D * (n / 100)^0.49 and n by 100.
+# Implemented here directly from the published formula. The approximation is
+# only accurate in the upper tail (p < .10); returned values above .10 mean
+# "p > .10" and should not be read as exact.
+lilliefors_test <- function(x) {
+  x <- x[is.finite(x)]
+  n_x <- length(x)
+  if (n_x < 5) stop("Lilliefors test requires at least 5 finite observations.")
+
+  z_sorted <- sort((x - mean(x)) / sd(x))
+  phi <- pnorm(z_sorted)
+  rank_i <- seq_len(n_x)
+  ks_d <- max(rank_i / n_x - phi, phi - (rank_i - 1) / n_x)
+
+  n_eff <- n_x
+  d_eff <- ks_d
+  if (n_x > 100) {
+    d_eff <- ks_d * (n_x / 100)^0.49
+    n_eff <- 100
+  }
+  log_p <- -7.01256 * d_eff^2 * (n_eff + 2.78019) +
+    2.99587 * d_eff * sqrt(n_eff + 2.78019) -
+    0.122119 + 0.974598 / sqrt(n_eff) + 1.67997 / n_eff
+
+  list(statistic = ks_d, p.value = min(1, exp(log_p)))
+}
+
+# Moment-based sample skewness and excess kurtosis.
+residual_shape <- function(x) {
+  dev <- x - mean(x)
+  m2 <- mean(dev^2)
+  c(skewness = mean(dev^3) / m2^1.5,
+    excess_kurtosis = mean(dev^4) / m2^2 - 3)
+}
+
+large_n_normality_note <- function(x) {
+  shape <- residual_shape(x)
+  sprintf("NOTE (Normality, N = %d): at this sample size normality tests reject even trivial departures from normality. Residual skewness = %.2f, excess kurtosis = %.2f; use these to judge whether the departure is practically meaningful.",
+          length(x), shape[["skewness"]], shape[["excess_kurtosis"]])
+}
 
 # =========================================================
 # 1. PRE-ESTIMATION FILTER (Data Integrity Customs)
@@ -83,8 +136,8 @@ ols_engine <- function(formula, data, robust = FALSE) {
     norm_p <- shapiro.test(e)$p.value
     norm_method <- "Shapiro-Wilk"
   } else {
-    norm_p <- ks.test(scale(e), "pnorm")$p.value
-    norm_method <- "Kolmogorov-Smirnov"
+    norm_p <- lilliefors_test(e)$p.value
+    norm_method <- "Lilliefors"
   }
 
   # 4. Diagnostics: VIF calculation (Base R Matrix Algebra)
@@ -102,13 +155,14 @@ ols_engine <- function(formula, data, robust = FALSE) {
   # 6. Customs Decision Logic (The 3 paths for Robust SE)
   use_robust <- FALSE
   aduana_msgs <- character(0)
+  if (n_obs > 5000) aduana_msgs <- c(aduana_msgs, large_n_normality_note(e))
 
   if (identical(robust, "auto")) {
     if (heteroskedasticity_detected) {
       use_robust <- TRUE
       aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Heteroskedasticity detected (p < .05). Robust Standard Errors (HC3) were applied automatically (Hayes & Cai, 2007).")
     } else {
-      aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Homoskedasticity confirmed. Classic OLS Standard Errors were used.")
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: No evidence of heteroskedasticity was detected (Breusch-Pagan p = %.3f); this does not confirm homoskedasticity. Classic OLS standard errors were used.", bp_p_value))
     }
   } else if (isTRUE(robust)) {
     use_robust <- TRUE
@@ -118,7 +172,7 @@ ols_engine <- function(formula, data, robust = FALSE) {
     if (heteroskedasticity_detected) {
       aduana_msgs <- c(aduana_msgs, "CRITICAL WARNING: Heteroskedasticity detected (Breusch-Pagan p < .05). Reported classic standard errors are biased. It is highly recommended to run the model with 'robust = TRUE' or 'robust = \"auto\"'.")
     } else {
-      aduana_msgs <- c(aduana_msgs, "Customs: The Homoskedasticity assumption is met (Breusch-Pagan p > .05).")
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs: No evidence against the homoskedasticity assumption was detected (Breusch-Pagan p = %.3f); this does not confirm it.", bp_p_value))
     }
   }
 
@@ -178,14 +232,16 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
   n_total <- nrow(data)
 
   # 1. DIAGNOSTICS: Normality and Homogeneity
+  # Known limitation: for paired designs this tests the between-group model's
+  # residuals, not the paired differences.
   fit_aov <- aov(formula, data = data)
   resid_aov <- residuals(fit_aov)
   if (n_total <= 5000) {
     norm_p <- shapiro.test(resid_aov)$p.value
     norm_method <- "Shapiro-Wilk"
   } else {
-    norm_p <- ks.test(scale(resid_aov), "pnorm")$p.value
-    norm_method <- "Kolmogorov-Smirnov"
+    norm_p <- lilliefors_test(resid_aov)$p.value
+    norm_method <- "Lilliefors"
   }
 
   # Levene's Test (Median-based, robust)
@@ -198,25 +254,29 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
   use_np <- FALSE
   use_welch <- FALSE
   aduana_msgs <- character(0)
+  if (n_total > 5000) aduana_msgs <- c(aduana_msgs, large_n_normality_note(resid_aov))
 
   if (identical(non_parametric, "auto")) {
     if (norm_p < 0.05) {
-      if (levene_p < 0.01) {
-        # Non-normality co-occurs with clear variance heterogeneity: the
-        # residual non-normality may itself be an artifact of unequal
-        # variances rather than genuine skew, so prefer Welch's ANOVA
-        # over a non-parametric test.
-        use_welch <- TRUE
-        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05, but Levene's test also indicates unequal variances (p = %.3f). This pattern suggests the non-normality result may be driven by heteroscedasticity rather than genuine skew. Switched to Welch's ANOVA instead of a non-parametric test.", norm_method, levene_p))
-      } else if (levene_p <= 0.10) {
+      if (paired) {
+        # Variance-based routing to Welch's ANOVA applies to independent
+        # groups only; paired designs keep the Wilcoxon signed-rank test.
         use_np <- TRUE
-        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05. Levene's test was inconclusive on variance homogeneity (p = %.3f). Defaulting to Non-Parametric tests; manual inspection of group variances is recommended.", norm_method, levene_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05 (paired design). The Wilcoxon signed-rank test was used; Levene-based routing to Welch's ANOVA does not apply to paired data.", norm_method))
+      } else if (levene_p < 0.01) {
+        use_welch <- TRUE
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05 and Levene's test (Brown-Forsythe) indicates unequal group variances (p = %.3f). Welch's ANOVA, which does not assume equal variances, was used. A normality rejection on pooled residuals can itself be produced by unequal group variances.", norm_method, levene_p))
+      } else if (levene_p <= 0.10) {
+        use_welch <- TRUE
+        group_vars <- tapply(y_val, group_val, var, na.rm = TRUE)
+        var_ratio <- max(group_vars) / min(group_vars)
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05; Levene's test (Brown-Forsythe) p = %.3f gives weak evidence of unequal group variances (max/min group variance ratio = %.2f). Welch's ANOVA, which does not assume equal variances, was used.", norm_method, levene_p, var_ratio))
       } else {
         use_np <- TRUE
-        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Severe non-normality detected (%s p < .05) with homogeneous variances confirmed (Levene p = %.3f). Transitioned automatically to Non-Parametric tests to protect validity.", norm_method, levene_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: %s p < .05; Levene's test (Brown-Forsythe) p = %.3f. A non-significant Levene test means insufficient evidence of unequal variances; it does not confirm equal variances, nor that the residuals are genuinely non-normal. A rank-based test (Kruskal-Wallis; Mann-Whitney U for two groups) was used.", norm_method, levene_p))
       }
     } else {
-      aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Normality assumption met. Parametric tests were used.")
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: No evidence against normality of the residuals was detected (%s p = %.3f); this does not confirm it. Parametric tests were used.", norm_method, norm_p))
     }
   } else if (isTRUE(non_parametric)) {
     use_np <- TRUE
@@ -226,7 +286,7 @@ anova_engine <- function(formula, data, non_parametric = FALSE, paired = FALSE) 
     if (norm_p < 0.05) {
       aduana_msgs <- c(aduana_msgs, sprintf("CRITICAL WARNING: Non-normal distribution detected (%s p < .05). Parametric results might be biased. Consider using 'non_parametric = TRUE' or 'non_parametric = \"auto\"'.", norm_method))
     } else {
-      aduana_msgs <- c(aduana_msgs, sprintf("Customs: Normality assumption of residuals is met (%s p > .05).", norm_method))
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs: No evidence against normality of the residuals was detected (%s p = %.3f); this does not confirm it.", norm_method, norm_p))
     }
   }
 
@@ -554,7 +614,7 @@ panel_engine <- function(formula, data, entity_id, time_id, method = "auto") {
       use_fe <- TRUE
       aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Hausman test rejects random effects (p = %.3f). Fixed Effects estimator selected to control for entity-specific unobserved heterogeneity (Wooldridge, 2010).", hausman_p))
     } else if (!is.na(hausman_p)) {
-      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: Hausman test supports random effects (p = %.3f). Random Effects estimator selected for efficiency gains (Wooldridge, 2010).", hausman_p))
+      aduana_msgs <- c(aduana_msgs, sprintf("Customs Auto-Pilot: The Hausman test does not reject random effects (p = %.3f); this does not confirm that the random-effects assumptions hold. Random Effects estimator selected for efficiency (Wooldridge, 2010).", hausman_p))
     } else {
       use_fe <- TRUE
       aduana_msgs <- c(aduana_msgs, "Customs Auto-Pilot: Hausman test inconclusive. Fixed Effects selected as conservative default.")
@@ -694,12 +754,19 @@ iv_engine <- function(formula, data, instruments) {
     first_stage_fstat[j] <- (first_stage_r2[j] / k_z) / ((1 - first_stage_r2[j]) / (n - k_z - 1))
   }
 
-  # Weak instruments test (Stock & Yogo, 2005)
+  # Weak-instrument rule of thumb: first-stage F < 10 (Staiger & Stock, 1997).
+  # Stock & Yogo (2005) tabulate formal critical values, which depend on the
+  # number of instruments and the tolerated bias or size distortion.
   min_fstat <- min(first_stage_fstat)
+  f_label <- if (k_x == 1) "First-stage F-statistic" else "Minimum per-regressor first-stage F-statistic"
   if (min_fstat < 10) {
-    aduana_msgs <- c(aduana_msgs, sprintf("CRITICAL WARNING (Weak Instruments): Minimum first-stage F-statistic = %.2f (< 10). Instruments may be too weak for reliable causal inference (Stock & Yogo, 2005).", min_fstat))
+    aduana_msgs <- c(aduana_msgs, sprintf("CRITICAL WARNING (Weak Instruments): %s = %.2f (< 10). This is the conventional first-stage F, which assumes homoskedastic errors; 10 is a conventional warning threshold (Staiger & Stock, 1997). Instruments may be too weak for reliable inference.", f_label, min_fstat))
   } else {
-    aduana_msgs <- c(aduana_msgs, sprintf("INFO: First-stage F-statistic = %.2f (> 10). Instruments pass relevance threshold (Stock & Yogo, 2005).", min_fstat))
+    aduana_msgs <- c(aduana_msgs, sprintf("INFO: %s = %.2f (>= 10). This is the conventional first-stage F, which assumes homoskedastic errors; 10 is a conventional warning threshold (Staiger & Stock, 1997).", f_label, min_fstat))
+    aduana_msgs <- c(aduana_msgs, "INFO: A first-stage F above 10 does not rule out weak identification; formal critical values depend on the number of instruments and the tolerated bias or size distortion (Stock & Yogo, 2005).")
+  }
+  if (k_x > 1) {
+    aduana_msgs <- c(aduana_msgs, sprintf("NOTE: With %d endogenous regressors, the minimum of per-regressor first-stage F statistics is not a valid joint weak-identification test. The Sanderson-Windmeijer conditional F or the Cragg-Donald statistic are the usual alternatives (not implemented in this version).", k_x))
   }
 
   # ============================================
@@ -717,7 +784,7 @@ iv_engine <- function(formula, data, instruments) {
   X_int <- cbind(1, X)
   resid_2sls <- y - as.vector(X_int %*% beta_2sls)
 
-  # Variance estimation (robust to heteroskedasticity)
+  # Variance estimation (classical, assumes homoskedastic errors; not robust)
   sigma2_2sls <- sum(resid_2sls^2) / (n - k_x - 1)
 
   # Standard errors (need to account for first stage uncertainty)
@@ -741,7 +808,7 @@ iv_engine <- function(formula, data, instruments) {
   r2_iv <- 1 - (rss / tss)
 
   # ============================================
-  # OVERIDENTIFICATION TEST (Sargan/Hansen)
+  # OVERIDENTIFICATION TEST (Sargan; assumes homoskedastic errors)
   # ============================================
 
   sargan_stat <- NA
@@ -763,9 +830,9 @@ iv_engine <- function(formula, data, instruments) {
     sargan_p <- pchisq(sargan_stat, df = k_z - k_x, lower.tail = FALSE)
 
     if (sargan_p < 0.05) {
-      aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Overidentification): Sargan test p = %.3f (< .05). Some instruments may be invalid (correlated with error term).", sargan_p))
+      aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Overidentification): Sargan test p = %.3f (< .05). Some instruments may be invalid (correlated with the error term). The Sargan test assumes homoskedastic errors; under heteroskedasticity, Hansen's J statistic is the usual alternative (not implemented in this version).", sargan_p))
     } else {
-      aduana_msgs <- c(aduana_msgs, sprintf("INFO: Sargan test p = %.3f (> .05). Overidentifying restrictions are satisfied.", sargan_p))
+      aduana_msgs <- c(aduana_msgs, sprintf("INFO: Sargan test p = %.3f (>= .05). The overidentifying restrictions are not rejected. The Sargan test assumes homoskedastic errors; under heteroskedasticity, Hansen's J statistic is the usual alternative (not implemented in this version).", sargan_p))
     }
   } else if (k_z == k_x) {
     aduana_msgs <- c(aduana_msgs, "INFO: Exact identification (# instruments = # endogenous variables). Sargan test not applicable.")
@@ -878,11 +945,12 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
   r2_did <- 1 - (rss / tss)
 
   # ============================================
-  # PARALLEL TRENDS TEST (Pre-period placebo test)
+  # PRE-TREATMENT LEVEL COMPARISON (descriptive)
   # ============================================
 
-  # For parallel trends, we need pre-period data with multiple time points
-  # Simplified version: check if pre-period means differ between groups
+  # Compares the treated and control mean outcome in the pre-treatment period.
+  # Descriptive only: DiD differences out time-invariant level gaps, and with a
+  # single pre-treatment period parallel trends cannot be assessed.
   pre_data <- data[time != post_level, ]
 
   if (nrow(pre_data) > 0) {
@@ -890,20 +958,20 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
     y_pre_control <- pre_data[pre_data[[treatment_var]] != treatment_level, y_name]
 
     if (length(y_pre_treated) > 1 && length(y_pre_control) > 1) {
-      # T-test for pre-period difference
+      # Welch t-test of the pre-treatment mean difference
       pre_test <- t.test(y_pre_treated, y_pre_control)
       pre_diff_p <- pre_test$p.value
 
       if (pre_diff_p < 0.05) {
-        aduana_msgs <- c(aduana_msgs, sprintf("WARNING (Pre-Treatment Balance): Treated and control groups differ significantly in pre-treatment levels (p = %.3f). This is a pre-treatment balance check, not a test of parallel trends. Consider including covariates or using alternative identification strategies (Roth et al., 2023).", pre_diff_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("NOTE: Treated and control groups differ in pre-treatment mean outcome (p = %.3f). DiD differences out time-invariant level gaps, so this does not by itself indicate a violation of parallel trends; it is reported for descriptive purposes. Assessing parallel trends requires multiple pre-treatment periods (Roth, 2022; Rambachan & Roth, 2023).", pre_diff_p))
       } else {
-        aduana_msgs <- c(aduana_msgs, sprintf("INFO: No significant pre-treatment difference in levels detected (p = %.3f). This does not confirm parallel trends, which requires observing group trajectories across multiple pre-treatment periods.", pre_diff_p))
+        aduana_msgs <- c(aduana_msgs, sprintf("INFO: No statistically significant difference in pre-treatment mean outcome between treated and control groups (p = %.3f). This is a descriptive single-period comparison, not an assessment of parallel trends, which requires multiple pre-treatment periods (Roth, 2022; Rambachan & Roth, 2023).", pre_diff_p))
       }
     } else {
-      aduana_msgs <- c(aduana_msgs, "INFO: Insufficient pre-period data for a multi-period parallel-trends evaluation; only a single-period balance check was performed.")
+      aduana_msgs <- c(aduana_msgs, "INFO: Fewer than two pre-treatment observations in the treated or control group; the descriptive comparison of pre-treatment mean outcomes was not computed.")
     }
   } else {
-    aduana_msgs <- c(aduana_msgs, "INFO: No pre-period data available. Parallel trends assumption cannot be tested. Interpret DiD estimate as a conditional difference.")
+    aduana_msgs <- c(aduana_msgs, "INFO: No pre-treatment observations available; the descriptive comparison of pre-treatment mean outcomes was not computed.")
   }
 
   # ============================================
@@ -969,12 +1037,24 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
 #'   standard errors (HC3) for OLS models. If \code{TRUE}, HC3 SEs are always
 #'   applied. If \code{"auto"}, they are applied only when the Breusch-Pagan
 #'   test detects heteroskedasticity (p < .05). Default is \code{FALSE}.
-#' @param non_parametric Logical or \code{"auto"}. Controls non-parametric
-#'   fallback for ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis or
-#'   Wilcoxon tests are used. If \code{"auto"}, transition occurs when
-#'   Shapiro-Wilk detects non-normality (p < .05). Default is \code{FALSE}.
+#' @param non_parametric Logical or \code{"auto"}. Controls the test used for
+#'   ANOVA/t-test models. If \code{TRUE}, Kruskal-Wallis (independent groups) or
+#'   Wilcoxon signed-rank (paired) tests are used. If \code{"auto"}, normality of
+#'   the pooled ANOVA residuals is tested first (Shapiro-Wilk for N <= 5000; a
+#'   Lilliefors-corrected Kolmogorov-Smirnov test with the Dallal-Wilkinson
+#'   p-value approximation for larger N). If normality is not rejected
+#'   (p >= .05), the classical one-way ANOVA is used. If it is rejected, paired
+#'   designs use the Wilcoxon signed-rank test, and independent-groups designs
+#'   are routed by Levene's test (Brown-Forsythe, median-centered): p <= .10
+#'   uses Welch's ANOVA, p > .10 uses Kruskal-Wallis. A non-significant Levene
+#'   test is treated as insufficient evidence of unequal variances, not as
+#'   confirmation of equal variances. Default is \code{FALSE}.
 #' @param paired Logical. If \code{TRUE}, assumes paired/dependent samples
 #'   for ANOVA/t-test models (pre-post designs). Default is \code{FALSE}.
+#'   Known limitation: in paired designs the normality check (and therefore the
+#'   \code{non_parametric = "auto"} decision) uses the residuals of the
+#'   between-group one-way model, not the paired differences that the paired
+#'   t-test actually assumes to be normal.
 #' @param entity_id Character string. Name of the entity/individual identifier
 #'   variable for panel data models. Required when \code{model = "panel"}.
 #' @param time_id Character string. Name of the time period identifier variable
@@ -982,10 +1062,18 @@ did_engine <- function(formula, data, treatment_var, time_var, treatment_level =
 #' @param method Character string for panel data. One of \code{"auto"} (default,
 #'   uses Hausman test to select between FE and RE), \code{"fe"} (Fixed Effects),
 #'   or \code{"re"} (Random Effects). Only used when \code{model = "panel"}.
-#' @param instruments A \code{formula} specifying instrumental variables for IV models
-#'   (e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}. Instruments must
-#'   satisfy relevance (correlated with endogenous X) and exogeneity (uncorrelated
-#'   with error term).
+#' @param instruments A \code{formula} specifying the excluded instruments for IV
+#'   models (e.g., \code{~ z1 + z2}). Required when \code{model = "iv"}.
+#'   Instruments must satisfy relevance (correlated with the endogenous
+#'   regressors) and exogeneity (uncorrelated with the error term). The IV engine
+#'   treats every right-hand-side variable in \code{formula} as endogenous and
+#'   does not support included exogenous control variables; the intercept is the
+#'   only exogenous regressor. Weak-instrument diagnostics use the conventional
+#'   (homoskedastic) first-stage F with the rule-of-thumb threshold of 10
+#'   (Staiger & Stock, 1997); with more than one endogenous regressor the
+#'   minimum of the per-regressor first-stage F statistics is reported, which is
+#'   not a valid joint weak-identification test. The Sargan overidentification
+#'   test also assumes homoskedastic errors.
 #' @param treatment_var Character string. Name of the treatment group variable for
 #'   DiD models. Required when \code{model = "did"}.
 #' @param time_var Character string. Name of the time period variable (pre/post) for
@@ -1298,7 +1386,7 @@ paper_engine <- function(formula, data, model = "ols", robust = FALSE,
 
   # --- WRAP-UP ---
   if(length(aduana_messages) == 0) {
-    aduana_messages <- "Success: The model meets all diagnosed assumptions and there was no severe data loss."
+    aduana_messages <- "No diagnostic check flagged a problem and there was no severe data loss; this does not confirm that the model's assumptions hold."
   }
 
   tables_list <- list()
@@ -1573,7 +1661,7 @@ plot_engine <- function(model_object, y_label = NULL, x_label = NULL) {
   }
 
   # =======================================================
-  # 6. DIFFERENCE-IN-DIFFERENCES PLOT: Pre-Treatment Balance
+  # 6. DIFFERENCE-IN-DIFFERENCES PLOT: Group Means and Counterfactual
   # =======================================================
   else if (method == "did") {
     # Get group means data

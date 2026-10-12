@@ -61,7 +61,8 @@ group_data <- data.frame(
   group = rep(c("Control", "Treatment A", "Treatment B"), each = 30)
 )
 
-# Auto-pilot switches to non-parametric if normality fails
+# Auto-pilot: if residual normality is rejected, Levene's test (Brown-Forsythe)
+# routes to Welch's ANOVA (p <= .10) or Kruskal-Wallis (p > .10)
 model_anova <- paper_engine(score ~ group, data = group_data, 
                             model = "anova", non_parametric = "auto")
 
@@ -129,7 +130,7 @@ plot_engine(model_panel)
 
 # 6. Instrumental Variables: Addressing Endogeneity
 
-When a predictor is correlated with the error term (endogeneity), Instrumental Variables (IV) provide consistent estimates using Two-Stage Least Squares (2SLS).
+When a predictor is correlated with the error term (endogeneity), Instrumental Variables (IV) provide consistent estimates using Two-Stage Least Squares (2SLS). The engine treats every right-hand-side variable as endogenous (included exogenous controls are not supported) and reports the conventional, homoskedasticity-based first-stage F with the rule-of-thumb warning threshold of 10 (Staiger & Stock, 1997).
 
 ```{r}
 # Simulate IV data with endogeneity
@@ -159,7 +160,7 @@ plot_engine(model_iv)
 
 # 7. Difference-in-Differences: Causal Policy Evaluation
 
-DiD estimates treatment effects by comparing changes over time between treated and control groups.
+DiD estimates treatment effects by comparing changes over time between treated and control groups. The engine also reports a descriptive comparison of pre-treatment group means; with a single pre-treatment period this is not a test of parallel trends, which requires multiple pre-treatment periods.
 
 ```{r}
 # Simulate policy intervention data
@@ -184,7 +185,7 @@ model_did <- paper_engine(outcome ~ 1,
 
 model_did$tables$Table2_DiD_Estimation
 model_did$tables$Group_Means
-model_did$messages  # Reports pre-treatment balance check
+model_did$messages  # Reports the descriptive pre-treatment comparison
 plot_engine(model_did)
 ```
 

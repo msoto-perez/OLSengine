@@ -1,3 +1,61 @@
+# OLSengine 1.2.1
+
+Changes made in response to peer review of the package description paper.
+
+## Changes in statistical behavior
+* `anova_engine()`, `non_parametric = "auto"`, independent groups: when the
+  normality test rejects (p < .05), Levene's test (Brown-Forsythe) p <= .10 now
+  routes to Welch's ANOVA, and Kruskal-Wallis is used only when Levene p > .10.
+  In 1.2.0, Levene p between .01 and .10 still led to Kruskal-Wallis. Messages
+  now state that a non-significant Levene test is insufficient evidence of
+  unequal variances, not confirmation of equal variances or of genuine
+  non-normality. When Welch's ANOVA is chosen with Levene p between .01 and
+  .10, the max/min group variance ratio is reported.
+* `anova_engine()`, `non_parametric = "auto"`, paired designs: fixed a 1.2.0
+  regression where a Levene-based switch to Welch's ANOVA could lead to a paired
+  t-test being run while the message reported Welch's ANOVA. Paired designs
+  with a normality rejection now use the Wilcoxon signed-rank test, as before
+  1.2.0.
+* Normality testing for N > 5000 (`ols_engine()`, `anova_engine()`): the
+  Kolmogorov-Smirnov test on standardized residuals, whose standard p-value is
+  invalid when the mean and variance are estimated from the data, is replaced
+  by a Lilliefors-corrected Kolmogorov-Smirnov test with the Dallal-Wilkinson
+  (1986) p-value approximation, implemented in base R. The method is reported
+  as "Lilliefors". For N > 5000 a note reports the residual skewness and excess
+  kurtosis, because normality tests reject trivial departures at that size.
+
+## Corrected messages and documentation
+* `did_engine()`: the pre-treatment comparison of treated and control mean
+  outcomes is now described as descriptive. A significant difference is
+  reported as a NOTE (no longer a WARNING), stating that DiD differences out
+  time-invariant level gaps and that assessing parallel trends requires
+  multiple pre-treatment periods. The recommendation to include covariates or
+  change the identification strategy was removed. Citations are now Roth
+  (2022) and Rambachan & Roth (2023). The t-test itself is unchanged.
+* `iv_engine()`: the F < 10 rule of thumb is now attributed to Staiger & Stock
+  (1997); Stock & Yogo (2005) are cited for critical values. Messages state
+  that the first-stage F is the conventional statistic assuming homoskedastic
+  errors and that F > 10 does not rule out weak identification. With more than
+  one endogenous regressor, a note states that the minimum of per-regressor
+  first-stage F statistics is not a valid joint weak-identification test. The
+  Sargan messages state the homoskedasticity assumption and no longer describe
+  a non-rejection as the restrictions being "satisfied".
+* Messages after a non-significant diagnostic test no longer claim the
+  assumption is confirmed. They now report the p-value and state that no
+  evidence against the assumption was detected, which does not confirm it.
+  Affected: the Breusch-Pagan messages in `ols_engine()` (previously
+  "Homoskedasticity confirmed" / "assumption is met"), the normality messages
+  in `anova_engine()` (previously "Normality assumption met" / "is met"), the
+  Hausman message in `panel_engine()` (previously "supports random effects"),
+  and the `paper_engine()` fallback message (previously "The model meets all
+  diagnosed assumptions").
+* Documentation (`paper_engine()`, README, vignette) now states that the IV
+  engine treats every right-hand-side variable as endogenous and does not
+  support included exogenous controls, and describes the updated ANOVA routing
+  and DiD pre-treatment comparison.
+* Documented a known limitation: in paired designs the normality check uses
+  the residuals of the between-group model, not the paired differences.
+
 # OLSengine 1.2.0
 
 ## Bug fixes / corrections

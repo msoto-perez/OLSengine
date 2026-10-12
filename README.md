@@ -8,9 +8,9 @@ Built under the philosophy of **"Assisted Simplicity"**, OLSengine acts as a met
 
 * **Six Estimation Engines:** OLS regression, ANOVA/t-tests, logistic regression, panel data (FE/RE), instrumental variables (2SLS), and difference-in-differences (DiD).
 * **Zero External Dependencies:** Built entirely on pure Base R matrix algebra and native stats functions for maximum long-term stability and algorithmic transparency.
-* **The Methodological Customs (Aduana):** Automatically runs background diagnostics (Breusch-Pagan, Shapiro-Wilk, Levene, VIF, Hosmer-Lemeshow, Hausman, weak instruments, pre-treatment balance) and outputs actionable, literature-backed warnings.
+* **The Methodological Customs (Aduana):** Automatically runs background diagnostics (Breusch-Pagan, Shapiro-Wilk/Lilliefors, Levene, VIF, Hosmer-Lemeshow, Hausman, first-stage F for weak instruments, a descriptive pre-treatment level comparison for DiD) and outputs actionable, literature-backed warnings.
 * **Paper-Ready Outputs:** Returns hierarchical tables formatted for direct inclusion in academic manuscripts (APA style), automatically calculating effect sizes and exact p-values.
-* **Publication-Ready Plots:** Generates APA-style, grayscale plots (forest plots, group means, logistic curves, panel trends, DiD pre-treatment balance) without requiring `ggplot2`.
+* **Publication-Ready Plots:** Generates APA-style, grayscale plots (forest plots, group means, logistic curves, panel trends, DiD group means with counterfactual) without requiring `ggplot2`.
 
 ## 📦 Installation
 
@@ -51,7 +51,8 @@ plot_engine(model_robust)
 Handles independent or paired designs, parametric and non-parametric tests.
 
 ```r
-# Auto-pilot: switches to non-parametric if normality fails
+# Auto-pilot: if residual normality is rejected, Levene's test (Brown-Forsythe)
+# routes to Welch's ANOVA (p <= .10) or Kruskal-Wallis (p > .10)
 model_anova <- paper_engine(score ~ group, data = experiment_data, 
                             model = "anova", non_parametric = "auto")
 
@@ -88,7 +89,7 @@ plot_engine(model_panel)
 
 ### 5. Instrumental Variables (2SLS)
 
-Detects weak instruments (Stock & Yogo, 2005) and tests overidentification (Sargan).
+Reports the conventional first-stage F statistic, which assumes homoskedastic errors, with a rule-of-thumb weak-instrument warning at F < 10 (Staiger & Stock, 1997); F above 10 does not rule out weak identification. Overidentification is tested with the Sargan test, which also assumes homoskedasticity. Every right-hand-side variable is treated as endogenous: included exogenous control variables are not supported.
 
 ```r
 model_iv <- paper_engine(education ~ income, 
@@ -103,7 +104,7 @@ plot_engine(model_iv)
 
 ### 6. Difference-in-Differences
 
-Checks pre-treatment balance between groups and visualizes treatment effects.
+Estimates the two-group, two-period DiD effect and reports a descriptive comparison of pre-treatment group means. With a single pre-treatment period this is not a test of parallel trends, which requires multiple pre-treatment periods.
 
 ```r
 model_did <- paper_engine(outcome ~ 1, 
@@ -142,7 +143,7 @@ To cite OLSengine in publications:
 
 ```
 Soto-Pérez, M. (2026). OLSengine: A transparent and assisted econometric 
-modelling engine in base R (v1.2.0). R package. 
+modelling engine in base R (v1.2.1). R package. 
 https://github.com/msoto-perez/OLSengine
 ```
 

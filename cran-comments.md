@@ -1,60 +1,59 @@
 ## Submission summary
 
-This is a minor release (1.1.1 -> 1.2.0) of a package already on CRAN. No
-backwards-incompatible changes: no exported function signatures added,
-removed, or changed, and no new package dependencies.
+This is an update from version 1.2.0 (published on CRAN on 2026-09-18) to
+1.2.1. All changes respond to peer review of the package description paper.
+There are no backwards-incompatible changes: no exported function signatures
+were added, removed, or changed, and no new package dependencies were added
+(base R only).
 
-Two changes, both in internal estimation-engine logic reached through the
-existing `paper_engine()` entry point:
+Changes in statistical behavior:
 
-* `did_engine()`: relabels the pre-treatment placebo check. It compares
-  treated/control group levels in a single pre-treatment period, which
-  tests for pre-existing imbalance, not parallel trends (parallel trends
-  requires observing group trajectories across multiple pre-treatment
-  periods). This was raised in a journal peer review of the package
-  description paper. The underlying statistical test is unchanged -- same
-  t-test of pre-treatment levels -- only the WARNING/INFO message wording,
-  plot labels, and documentation were corrected to avoid overclaiming.
-* `anova_engine()`: new decision logic for the `non_parametric = "auto"`
-  path. Previously, whenever Shapiro-Wilk rejected normality, the function
-  always fell back to Kruskal-Wallis. It now also consults Levene's test
-  (Brown-Forsythe) before deciding: clear heteroscedasticity (Levene
-  p < .01) routes to Welch's ANOVA instead, since heteroscedasticity-driven
-  apparent non-normality is better addressed by a variance-robust test than
-  a rank-based one; ambiguous cases (.01-.10) keep the previous
-  Kruskal-Wallis default but flag the ambiguity explicitly in the message;
-  clearly homogeneous variance (p > .10) behaves exactly as before. This
-  was validated with a 2x2 Monte Carlo design (normality x variance
-  homogeneity) and a targeted 2,000-replicate refinement of the
-  heteroscedastic/non-normal cell: Welch's ANOVA Type-I error rate is 7.11%
-  (95% CI [6.04%, 8.34%]) under combined skew and heteroscedasticity,
-  within the pre-specified 7.5% tolerance for that design. Reproducible
-  validation scripts are included under `harness/` (excluded from the
-  built package via `.Rbuildignore`).
+* `anova_engine()`, `non_parametric = "auto"`, independent groups: when the
+  normality test rejects, Levene's test (Brown-Forsythe) p <= .10 now routes
+  to Welch's ANOVA; Kruskal-Wallis is used only when Levene p > .10. In 1.2.0,
+  Levene p between .01 and .10 still led to Kruskal-Wallis.
+* `anova_engine()`, `non_parametric = "auto"`, paired designs: fixes a 1.2.0
+  regression in which a Levene-based switch to Welch's ANOVA could lead to a
+  paired t-test being run while the message reported Welch's ANOVA. Paired
+  designs with a normality rejection use the Wilcoxon signed-rank test again.
+* Normality testing for N > 5000 (`ols_engine()`, `anova_engine()`): the
+  Kolmogorov-Smirnov test on standardized residuals, whose standard p-value is
+  invalid when the mean and variance are estimated from the data, was replaced
+  by a Lilliefors-corrected Kolmogorov-Smirnov test with the Dallal-Wilkinson
+  (1986) p-value approximation, implemented in base R. At that sample size a
+  note also reports the residual skewness and excess kurtosis.
 
-Full details in NEWS.md.
+Corrected messages and documentation:
+
+* `did_engine()`: the comparison of treated and control mean outcomes in the
+  single pre-treatment period is now reported as descriptive (a NOTE rather
+  than a WARNING), stating that it is not a test of parallel trends, which
+  requires multiple pre-treatment periods. The underlying t-test is unchanged.
+* `iv_engine()`: the F < 10 rule of thumb is attributed to Staiger & Stock
+  (1997); messages state that the first-stage F assumes homoskedastic errors,
+  that F > 10 does not rule out weak identification, and that the minimum of
+  per-regressor first-stage F statistics is not a valid joint test with more
+  than one endogenous regressor. The Sargan messages state the
+  homoskedasticity assumption.
+* Messages after a non-significant diagnostic test (Breusch-Pagan, residual
+  normality, Hausman) no longer claim the assumption is confirmed; they report
+  the p-value and state that the absence of evidence does not confirm the
+  assumption.
+* Documentation states that the IV engine treats every right-hand-side
+  variable as endogenous (no included exogenous controls), and that in paired
+  designs the normality check uses between-group residuals rather than paired
+  differences (known limitation).
+
+Full details in NEWS.md (entry 1.2.1).
 
 ## Test environments
 
-* Local Windows 11, R 4.5.2 (x86_64-w64-mingw32), `R CMD check --as-cran`
-  run directly on the built source tarball (`OLSengine_1.2.0.tar.gz`), not
-  just `devtools::check()` on the source tree.
+* Local Windows 11, R 4.5.2 (x86_64-w64-mingw32): `R CMD build`, then
+  `R CMD check --as-cran` run on the built tarball (`OLSengine_1.2.1.tar.gz`).
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
-
-* `checking for future file timestamps ... NOTE` / `unable to verify
-  current time`. This package's working copy lives in a Dropbox-synced
-  folder; I verified with `Get-ChildItem` that no file in the source tree
-  has a modification timestamp later than the current system clock, so
-  this is not a stale or mis-dated file in the package. The check step
-  itself reports it was unable to verify the current time against an
-  external reference, which points to a local network/clock-verification
-  hiccup in this environment rather than an issue with the package
-  contents. This is a known class of false positive for packages developed
-  in cloud-synced folders and is not expected to reproduce on CRAN's own
-  build servers.
+0 errors | 0 warnings | 0 notes
 
 ## Downstream dependencies
 
