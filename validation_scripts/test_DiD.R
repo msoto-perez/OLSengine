@@ -22,12 +22,12 @@ post <- rep(c(0, 1), times = n_per_group * 2)
 # Create entity IDs (for repeated measures)
 entity_id <- rep(1:(n_per_group * 2), each = 2)
 
-# Simulate outcome with parallel trends pre-treatment
+# Simulate outcome where parallel trends hold by construction (common time effect)
 # True treatment effect = 5 units
 baseline <- rnorm(n_per_group * 2, mean = 50, sd = 10)
 baseline_expanded <- rep(baseline, each = 2)
 
-# Time trend (same for both groups - parallel trends)
+# Time effect common to both groups, so parallel trends hold
 time_effect <- post * 3
 
 # Treatment effect (only for treated group in post period)
@@ -94,39 +94,43 @@ print(did_covariates$tables$Table2_DiD_Estimation)
 cat("\n>> CUSTOMS MESSAGES\n")
 print(did_covariates$messages)
 
-# 4. Test with violation of parallel trends
+# 4. Scenario: constant pre-treatment level gap plus a group-specific
+#    pre-to-post change
 cat("\n\n======================================================\n")
-cat("--- TEST: VIOLATION OF PARALLEL TRENDS ---\n")
+cat("--- SCENARIO: PRE-TREATMENT LEVEL GAP + GROUP-SPECIFIC CHANGE ---\n")
 cat("======================================================\n")
 
-# Create data where treated group already had higher growth pre-treatment
+# Treated group has a higher baseline level (constant level gap) and a steeper
+# pre-to-post change than the control group
 set.seed(999)
 baseline_control <- rnorm(n_per_group, mean = 50, sd = 10)
 baseline_treated <- rnorm(n_per_group, mean = 55, sd = 10)  # Higher baseline
 
 baseline_all <- c(rep(baseline_control, each = 2), rep(baseline_treated, each = 2))
 
-# Different time trends for treated vs control (violates parallel trends)
+# Group-specific pre-to-post change (+6 treated vs +2 control). With a single
+# pre-treatment period this is indistinguishable from a treatment effect: the
+# pre-treatment level comparison cannot detect it, and it biases the DiD estimate.
 time_effect_control <- post * 2
-time_effect_treated <- post * 6  # Steeper trend
+time_effect_treated <- post * 6  # Steeper pre-to-post change
 
 time_effect_all <- c(
   rep(time_effect_control[1:(n_per_group * 2)], 1),
   rep(time_effect_treated[1:(n_per_group * 2)], 1)
 )
 
-y_violated <- baseline_all + time_effect_all + treatment_effect + rnorm(n_per_group * 4, sd = 5)
+y_gap <- baseline_all + time_effect_all + treatment_effect + rnorm(n_per_group * 4, sd = 5)
 
-test_data_violated <- data.frame(
-  y = y_violated,
+test_data_gap <- data.frame(
+  y = y_gap,
   treated = factor(treated, levels = c(0, 1), labels = c("Control", "Treated")),
   time = factor(post, levels = c(0, 1), labels = c("Pre", "Post")),
   entity_id = entity_id
 )
 
-did_violated <- paper_engine(
+did_gap <- paper_engine(
   y ~ 1,
-  data = test_data_violated,
+  data = test_data_gap,
   model = "did",
   treatment_var = "treated",
   time_var = "time",
@@ -134,8 +138,9 @@ did_violated <- paper_engine(
   post_level = "Post"
 )
 
-cat("\n>> CUSTOMS MESSAGES (Should warn about pre-trends):\n")
-print(did_violated$messages)
+cat("\n>> CUSTOMS MESSAGES (expect a NOTE on the pre-treatment level gap; the\n")
+cat(">> group-specific change is not detectable with one pre-treatment period):\n")
+print(did_gap$messages)
 
 cat("\n\n======================================================\n")
 cat(">> Test Complete: DiD engine functional\n")

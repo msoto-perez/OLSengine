@@ -1,12 +1,12 @@
 # ==============================================================================
 # HARNESS A2 - MOTOR DiD
 # Multi-scenario Monte Carlo validation: did_engine vs. lm() with dummies
-# Tests: (1) numerical parity, (2) pre-trends placebo test detection accuracy
-#        (balanced vs unbalanced group sizes)
+# Tests: (1) numerical parity, (2) how often the descriptive pre-treatment level
+#        comparison flags a constant level gap (balanced vs unbalanced groups)
 # ==============================================================================
 suppressMessages(source("../R/OLS_engine.R"))
 
-make_did_data <- function(n_per_cell, violated_pretrend, balanced, seed) {
+make_did_data <- function(n_per_cell, level_gap, balanced, seed) {
   set.seed(seed)
 
   if (balanced) {
@@ -17,8 +17,10 @@ make_did_data <- function(n_per_cell, violated_pretrend, balanced, seed) {
     n_control <- round(n_per_cell * 1.6)
   }
 
-  # Pre-treatment gap between groups: 0 if parallel trends hold, nonzero if violated
-  pre_gap <- if (violated_pretrend) 8 else 0
+  # Constant level gap between groups (0 or 8), present in BOTH the pre and post
+  # periods. Parallel trends hold in both scenarios; the gap scenario only shifts
+  # the treated group's level, which DiD differences out.
+  pre_gap <- if (level_gap) 8 else 0
 
   treated_pre  <- rep(1, n_treated); post_pre_t  <- rep(0, n_treated)
   treated_post <- rep(1, n_treated); post_post_t <- rep(1, n_treated)
@@ -37,8 +39,8 @@ make_did_data <- function(n_per_cell, violated_pretrend, balanced, seed) {
   )
 }
 
-run_did_scenario <- function(n_per_cell, violated_pretrend, balanced, seed) {
-  df <- make_did_data(n_per_cell, violated_pretrend, balanced, seed)
+run_did_scenario <- function(n_per_cell, level_gap, balanced, seed) {
+  df <- make_did_data(n_per_cell, level_gap, balanced, seed)
   df$interaction <- df$treated_num * df$post_num
   df$treated_f <- factor(df$treated_num, levels = c(0,1), labels = c("Control","Treated"))
   df$post_f    <- factor(df$post_num,    levels = c(0,1), labels = c("Pre","Post"))
@@ -52,17 +54,18 @@ run_did_scenario <- function(n_per_cell, violated_pretrend, balanced, seed) {
 
   did_diff <- abs(base_did - eng_did)
 
-  # Did the engine's placebo test flag the pre-trend violation?
-  flagged <- any(grepl("Parallel Trends.*Significant", eng_fit$aduana_msgs))
+  # Did the engine's pre-treatment level comparison flag a level difference?
+  flagged <- any(grepl("Treated and control groups differ in pre-treatment mean outcome",
+                       eng_fit$aduana_msgs, fixed = TRUE))
 
-  data.frame(n_per_cell, violated_pretrend, balanced, seed,
+  data.frame(n_per_cell, level_gap, balanced, seed,
              did_diff = as.numeric(did_diff),
-             true_violation = violated_pretrend, detected_violation = flagged)
+             true_level_gap = level_gap, flagged_level_gap = flagged)
 }
 
 scenarios <- expand.grid(
   n_per_cell = c(30, 100, 300),
-  violated_pretrend = c(FALSE, TRUE),
+  level_gap = c(FALSE, TRUE),
   balanced = c(TRUE, FALSE)
 )
 
@@ -72,7 +75,7 @@ idx <- 1
 for (s in seq_len(nrow(scenarios))) {
   for (seed in seq_len(n_seeds)) {
     results[[idx]] <- tryCatch(
-      run_did_scenario(scenarios$n_per_cell[s], scenarios$violated_pretrend[s],
+      run_did_scenario(scenarios$n_per_cell[s], scenarios$level_gap[s],
                         scenarios$balanced[s], seed + 60000),
       error = function(e) NULL)
     idx <- idx + 1
@@ -83,7 +86,8 @@ res <- do.call(rbind, results[!sapply(results, is.null)])
 cat("=== DiD ENGINE: numerical parity vs lm() w/ dummies, n runs =", nrow(res), "===\n")
 cat("Max DiD-estimate difference:", max(res$did_diff), "\n\n")
 
-cat("=== Pre-trends violation detection, by n and balance ===\n")
-print(aggregate(detected_violation ~ n_per_cell + true_violation + balanced, data = res, FUN = mean))
+cat("=== Pre-treatment level comparison: rate of flagging a level difference, by n and balance ===\n")
+cat("(constant level gap scenario vs. no-gap scenario; parallel trends hold in both)\n")
+print(aggregate(flagged_level_gap ~ n_per_cell + true_level_gap + balanced, data = res, FUN = mean))
 
 saveRDS(res, "results_did.rds")
