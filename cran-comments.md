@@ -38,7 +38,8 @@ Corrected messages and documentation:
 * Messages after a non-significant diagnostic test (Breusch-Pagan, residual
   normality, Hausman) no longer claim the assumption is confirmed; they report
   the p-value and state that the absence of evidence does not confirm the
-  assumption.
+  assumption. The `paper_engine()` fallback message no longer states that the
+  model meets all diagnosed assumptions.
 * Documentation states that the IV engine treats every right-hand-side
   variable as endogenous (no included exogenous controls), and that in paired
   designs the normality check uses between-group residuals rather than paired
